@@ -1,7 +1,7 @@
 # Integra Escala
 
 <p align="center">
-  <img src="docs/banner.png" alt="Integra Escala — Automatic shift scheduling for elderly care facilities (ILPIs)" width="100%">
+  <img src="public/logo-integra-escala.png" alt="Integra Escala" width="420">
 </p>
 
 <p align="center">
