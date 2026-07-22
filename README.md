@@ -1,132 +1,126 @@
-# 🗓️ Integra Escala — Gerador de Escala para ILPIs
+# Integra Escala
 
-> Sistema web para geração automática de escalas de trabalho em Instituições de Longa Permanência para Idosos (ILPIs).
+<p align="center">
+  <img src="docs/banner.png" alt="Integra Escala — Automatic shift scheduling for elderly care facilities (ILPIs)" width="100%">
+</p>
 
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase)](https://supabase.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <a href="#english">🇺🇸 English</a> · <a href="README.pt-BR.md">🇧🇷 Português (Brasil)</a>
+</p>
 
-## O Problema
+<p align="center">
+  <strong>Automatic shift scheduling for elderly care facilities (ILPIs).</strong><br>
+  Generate compliant, balanced monthly work schedules in seconds — not hours.
+</p>
 
-Gestores de ILPIs montam escala de colaboradores **manualmente** no papel ou planilha, gastando uma tarde inteira por mês — realocando nomes, testando combinações e corrigindo conflitos. O processo é propenso a erro (mesma pessoa em dois turnos conflitantes, dias descobertos) e não deixa histórico.
-
-## A Solução
-
-O **Integra Escala** reduz o tempo de montagem de escala de **uma tarde inteira para alguns minutos**, com um sistema web que:
-
-- ✅ Gera a escala automaticamente em **1 clique**
-- ✅ Permite ajustes finos pelo gestor (arrastar/soltar)
-- ✅ Suporta múltiplos regimes: 12×36, 12×60, 24/72, 8h 5×2, diarista, noturnista
-- ✅ Detecta conflitos automaticamente
-- ✅ Mantém histórico de meses anteriores
-- ✅ Interface intuitiva para perfil não-técnico
-
-## Stack
-
-| Camada | Tecnologia |
-|--------|-----------|
-| Frontend | Next.js 15, React 19, Tailwind CSS 4 |
-| UI | shadcn/ui, Radix UI, Lucide Icons |
-| Backend | Supabase (PostgreSQL + Auth + RLS) |
-| Deploy | Vercel |
-
-## Quick Start
-
-```bash
-# Clone
-git clone https://github.com/integaborni/integra-escala.git
-cd integra-escala
-
-# Instale dependências
-pnpm install
-
-# Configure variáveis de ambiente
-cp .env.example .env.local
-# Edite .env.local com suas credenciais do Supabase
-
-# Execute as migrations no Supabase
-# (veja docs/migrations/)
-
-# Inicie o servidor de desenvolvimento
-pnpm dev
-```
-
-Abra [http://localhost:3000](http://localhost:3000).
-
-## Configuração do Supabase
-
-1. Crie um projeto no [Supabase](https://supabase.com)
-2. Execute as migrations em `docs/migrations/` na ordem:
-   - `001_schema.sql` — Tabelas base
-   - `002_security_hardening.sql` — Políticas RLS
-   - `003_convite_token.sql` — Sistema de convites
-3. Copie a URL e a chave anon para `.env.local`
-
-## Estrutura do Projeto
-
-```
-src/
-├── app/
-│   ├── auth/callback/     # OAuth callback
-│   ├── cadastro/          # Tela de cadastro
-│   ├── colaboradores/     # Gestão de colaboradores
-│   ├── dashboard/         # Dashboard principal
-│   ├── login/             # Tela de login
-│   └── page.tsx           # Landing page
-├── components/
-│   ├── calendar/          # Componentes de calendário/escala
-│   ├── colaboradores/     # Modais de colaboradores
-│   ├── layout/            # Layout components
-│   └── ui/                # shadcn/ui components
-├── lib/
-│   ├── supabase/          # Client e server helpers
-│   └── types/             # TypeScript types
-└── middleware.ts          # Auth middleware
-```
-
-## Documentação
-
-- [PRD — Product Requirements](docs/PRD-gerador-escala.md)
-- [Guia de Marca](docs/branding/guia-de-marca.md)
-- [Revisão de Segurança](docs/security/security-review.md)
-- [SEO & Performance](docs/optimization/seo-performance-review.md)
-
-## Cargos e Regimes Suportados
-
-| Cargo | Regime Padrão |
-|-------|--------------|
-| Técnico de Enfermagem (diurno) | 8h, 5×2 |
-| Técnico de Enfermagem (noturno) | 12×36 ou 12×60 |
-| Cuidador (24h) | 24/72 |
-| Auxiliar | 8h, 5×2 |
-| Diarista | Só dias úteis (manhã) |
-| Noturnista | Só noite |
-
-O gestor pode criar novos cargos com regime personalizado.
-
-## Contribuindo
-
-Contribuições são bem-vindas! Veja como participar:
-
-1. Fork o repositório
-2. Crie uma branch (`git checkout -b feature/minha-feature`)
-3. Commit suas mudanças (`git commit -m 'feat: adiciona minha feature'`)
-4. Push para a branch (`git push origin feature/minha-feature`)
-5. Abra um Pull Request
-
-## Roadmap
-
-- [ ] Motor de geração automática de escala (constraint solver)
-- [ ] Drag-and-drop para ajustes manuais
-- [ ] Impressão com identidade visual da ILPI
-- [ ] Suporte a multi-unidades
-- [ ] Notificações de conflitos em tempo real
-- [ ] PWA para acesso mobile offline
-
-## Licença
-
-Este projeto está licenciado sob a [Licença MIT](LICENSE).
+<p align="center">
+  <a href="https://github.com/claudioorjunior/integra-escala/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"></a>
+  <a href="https://github.com/claudioorjunior/integra-escala/stargazers"><img src="https://img.shields.io/github/stars/claudioorjunior/integra-escala?style=social" alt="Stars"></a>
+  <img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js" alt="Next.js 15">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react" alt="React 19">
+  <img src="https://img.shields.io/badge/Supabase-Auth%20%2B%20DB-3FCF8E?logo=supabase" alt="Supabase">
+  <img src="https://img.shields.io/badge/Tailwind-4-38B2AC?logo=tailwind-css" alt="Tailwind 4">
+</p>
 
 ---
 
-**Integra Escala** é um projeto da [Integra Senior](https://integrasenior.com.br) 🇧🇷
+<a name="english"></a>
+## 🇺🇸 English
+
+**Integra Escala** is an open-source web app that automates monthly work-shift scheduling for **ILPIs** (*Instituições de Longa Permanência para Idosos* — Brazilian long-term care facilities for the elderly).
+
+It replaces error-prone spreadsheets and manual grid-building with a fast, constraint-aware generator that respects Brazilian labor rules commonly applied in this sector: minimum rest between shifts (11h), 44h/week cap, mandatory day off (DSR), and per-role coverage.
+
+### Why this exists
+
+ILPIs must staff 24/7 with limited personnel and tight budgets. Building the monthly schedule by hand is one of the most time-consuming, error-prone tasks a manager faces — and a single mistake can put the facility in violation. Integra Escala turns a 4–6 hour monthly chore into a one-click operation.
+
+### Features
+
+- **One-click monthly schedule generation** with constraint validation
+- **Drag-and-drop adjustments** when reality doesn't match the plan
+- **Multi-role coverage** (nurses, technicians, caregivers, cleaning)
+- **Per-collaborator workload tracking** (hours, shifts, days off)
+- **Multi-tenant by design** — each facility's data is isolated via Supabase RLS
+- **Invite-based onboarding** — managers invite caregivers by email
+- **Public landing page** with auth (login/signup)
+- **Mobile-responsive** — managers can adjust on the floor
+
+### Tech stack
+
+| Layer | Choice |
+|---|---|
+| Frontend | Next.js 15 (App Router) + React 19 |
+| Styling | Tailwind CSS v4 + shadcn/ui |
+| Auth & DB | Supabase (Postgres + Auth + RLS) |
+| Forms | React Hook Form + Zod |
+| Deployment | Vercel-ready |
+
+### Quick start
+
+```bash
+# 1. Clone
+git clone https://github.com/claudioorjunior/integra-escala.git
+cd integra-escala
+
+# 2. Install
+pnpm install          # or npm install / yarn
+
+# 3. Configure
+cp .env.example .env.local
+# fill in NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+# (create a free project at https://supabase.com)
+
+# 4. Apply migrations
+# Run the .sql files in /docs/migrations against your Supabase project
+
+# 5. Run
+pnpm dev
+# open http://localhost:3000
+```
+
+### Project structure
+
+```
+integra-escala/
+├── src/
+│   ├── app/                 # Next.js App Router (landing, login, dashboard, ...)
+│   ├── components/          # UI components (shadcn/ui + custom)
+│   └── lib/
+│       ├── supabase/        # Supabase client (browser/server/middleware)
+│       └── scheduling/      # Shift-generation engine
+├── docs/
+│   ├── migrations/          # SQL migrations (apply to Supabase)
+│   ├── prd.md               # Product Requirements Document
+│   ├── security-review.md   # Threat model + mitigations
+│   ├── seo.md               # SEO/marketing playbook
+│   └── banner.png           # README header image
+└── public/                  # Static assets
+```
+
+### Roadmap
+
+- [x] MVP: auth, dashboard, monthly view, collaborators
+- [x] Invitation system
+- [ ] Schedule generation engine (in progress)
+- [ ] PDF export
+- [ ] Push notifications
+- [ ] Multi-facility dashboards
+
+### Contributing
+
+PRs welcome! This is a small, focused project — if you've ever worked in healthcare ops or built scheduling tools, your input is gold. Open an issue first to discuss the approach.
+
+### License
+
+MIT — see [LICENSE](LICENSE). Use it, fork it, sell services around it.
+
+### Maintainer
+
+Built by [@claudioorjunior](https://github.com/claudioorjunior) as part of the **Integra** family of open-source tools for Brazilian eldercare.
+
+---
+
+<p align="center">
+  <a href="README.pt-BR.md">🇧🇷 Ler em Português (Brasil)</a>
+</p>
