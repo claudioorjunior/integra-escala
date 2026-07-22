@@ -6,7 +6,8 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import MonthCard from "@/components/calendar/MonthCard";
 import ScaleEditor from "@/components/calendar/ScaleEditor";
-import { Plus, Printer, Sparkles } from "lucide-react";
+import { ptBR } from "@/lib/i18n/pt-BR";
+import { Printer, Sparkles } from "lucide-react";
 
 function getClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -105,15 +106,21 @@ export default function DashboardPage() {
 
       {/* Lista de meses */}
       <div className="space-y-5">
-        {meses.map(({ mes, ano, label }) => (
-          <MonthCard
-            key={`${mes}-${ano}`}
-            mes={mes}
-            ano={ano}
-            onEditar={() => setMesEditando({ mes, ano })}
-            onGerar={() => alert(`Gerar escala de ${label}`)}
-          />
-        ))}
+        {meses.length === 0 ? (
+          <div className="bg-white rounded-xl border border-[#e8e2d4] px-5 py-8 text-center text-[#8b7d6b]">
+            {ptBR.emptyStates.dashboard.noShiftsScheduledYet}
+          </div>
+        ) : (
+          meses.map(({ mes, ano, label }) => (
+            <MonthCard
+              key={`${mes}-${ano}`}
+              mes={mes}
+              ano={ano}
+              onEditar={() => setMesEditando({ mes, ano })}
+              onGerar={() => alert(`Gerar escala de ${label}`)}
+            />
+          ))
+        )}
       </div>
 
       {/* Editor de escala (modal) */}

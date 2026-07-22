@@ -6,6 +6,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { Plus, Search, Filter } from "lucide-react";
 import ColaboradorModal from "@/components/colaboradores/ColaboradorModal";
+import { ptBR } from "@/lib/i18n/pt-BR";
 
 function getClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -216,56 +217,62 @@ export default function ColaboradoresPage() {
       </div>
 
       {/* Lista de colaboradores */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {colaboradoresFiltrados.map((colaborador) => (
-          <div
-            key={colaborador.id}
-            onClick={() => abrirModal(colaborador)}
-            className="bg-white rounded-xl border border-[#e8e2d4] p-5 cursor-pointer hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-start gap-4">
-              {/* Foto */}
-              <div className="w-16 h-16 rounded-full bg-[#1a3c34]/10 flex items-center justify-center shrink-0">
-                {colaborador.foto_url ? (
-                  <img
-                    src={colaborador.foto_url}
-                    alt={colaborador.nome}
-                    className="w-16 h-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-2xl font-medium text-[#1a3c34]">
-                    {colaborador.nome.charAt(0)}
-                  </span>
-                )}
-              </div>
+      {colaboradoresFiltrados.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#e8e2d4] px-5 py-8 text-center text-[#8b7d6b]">
+          {ptBR.emptyStates.colaboradores.noTeamMembersFound}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {colaboradoresFiltrados.map((colaborador) => (
+            <div
+              key={colaborador.id}
+              onClick={() => abrirModal(colaborador)}
+              className="bg-white rounded-xl border border-[#e8e2d4] p-5 cursor-pointer hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start gap-4">
+                {/* Foto */}
+                <div className="w-16 h-16 rounded-full bg-[#1a3c34]/10 flex items-center justify-center shrink-0">
+                  {colaborador.foto_url ? (
+                    <img
+                      src={colaborador.foto_url}
+                      alt={colaborador.nome}
+                      className="w-16 h-16 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl font-medium text-[#1a3c34]">
+                      {colaborador.nome.charAt(0)}
+                    </span>
+                  )}
+                </div>
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-medium text-[#1a3c34] truncate">
-                  {colaborador.nome}
-                </h3>
-                <p className="text-sm text-[#8b7d6b] mt-0.5">
-                  {colaborador.cargo}
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      colaborador.ativo
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {colaborador.ativo ? "Ativo" : "Inativo"}
-                  </span>
-                  <span className="text-xs text-[#8b7d6b]">
-                    {colaborador.regime}
-                  </span>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-medium text-[#1a3c34] truncate">
+                    {colaborador.nome}
+                  </h3>
+                  <p className="text-sm text-[#8b7d6b] mt-0.5">
+                    {colaborador.cargo}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        colaborador.ativo
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {colaborador.ativo ? "Ativo" : "Inativo"}
+                    </span>
+                    <span className="text-xs text-[#8b7d6b]">
+                      {colaborador.regime}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Modal de detalhes */}
       <ColaboradorModal
