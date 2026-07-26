@@ -2,14 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
+import { signIn } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,32 +17,14 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const supabase = getClient();
-    if (!supabase) {
-      setError("Configuração do Supabase ausente.");
+    try {
+      await signIn(email, password);
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message || "Email ou senha inválidos.");
       setLoading(false);
-      return;
     }
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(
-        error.message === "Invalid login credentials"
-          ? "Email ou senha inválidos."
-          : error.message === "Email not confirmed"
-          ? "Confirme seu email antes de fazer login."
-          : "Erro ao fazer login. Tente novamente."
-      );
-      setLoading(false);
-      return;
-    }
-
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (

@@ -2,17 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
+import { getLocalUser } from "@/lib/auth";
+import { getDB } from "@/lib/db";
 import { Plus, Search, Filter } from "lucide-react";
 import ColaboradorModal from "@/components/colaboradores/ColaboradorModal";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
 
 interface Colaborador {
   id: string;
@@ -26,122 +19,77 @@ interface Colaborador {
   created_at: string;
 }
 
-// Mock data para demonstração
-const MOCK_COLABORADORES: Colaborador[] = [
-  {
-    id: "1",
-    nome: "Fátima Silva",
-    email: "fatima@integra.com",
-    telefone: "(21) 99999-1111",
-    cargo: "Cuidadora",
-    regime: "24/72",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-01-15",
-  },
-  {
-    id: "2",
-    nome: "Maria Souza",
-    email: "maria@integra.com",
-    telefone: "(21) 99999-2222",
-    cargo: "Técnica de Enfermagem",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-02-01",
-  },
-  {
-    id: "3",
-    nome: "João Costa",
-    email: "joao@integra.com",
-    telefone: "(21) 99999-3333",
-    cargo: "Noturnista",
-    regime: "12x36",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-02-15",
-  },
-  {
-    id: "4",
-    nome: "Carlos Pereira",
-    email: "carlos@integra.com",
-    telefone: "(21) 99999-4444",
-    cargo: "Cuidador",
-    regime: "24/72",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-03-01",
-  },
-  {
-    id: "5",
-    nome: "Ana Oliveira",
-    email: "ana@integra.com",
-    telefone: "(21) 99999-5555",
-    cargo: "Noturnista",
-    regime: "12x36",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-03-10",
-  },
-  {
-    id: "6",
-    nome: "José Santos",
-    email: "jose@integra.com",
-    telefone: "(21) 99999-6666",
-    cargo: "Diarista",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-03-20",
-  },
-  {
-    id: "7",
-    nome: "Rita Lima",
-    email: "rita@integra.com",
-    telefone: "(21) 99999-7777",
-    cargo: "Técnica de Enfermagem",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-04-01",
-  },
-  {
-    id: "8",
-    nome: "Lúcia Mendes",
-    email: "lucia@integra.com",
-    telefone: "(21) 99999-8888",
-    cargo: "Técnica de Enfermagem",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: false,
-    created_at: "2026-04-15",
-  },
-];
-
 export default function ColaboradoresPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [colaboradores, setColaboradores] = useState<Colaborador[]>(MOCK_COLABORADORES);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [colaboradorSelecionado, setColaboradorSelecionado] = useState<Colaborador | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const [filtroCargo, setFiltroCargo] = useState<string>("todos");
 
   useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) {
-      router.push("/login");
-      return;
-    }
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
+    async function carregarDados() {
+      const user = await getLocalUser();
+      if (!user) {
         router.push("/login");
         return;
       }
-      setUser(data.user);
-      setLoading(false);
-    });
+
+      try {
+        const db = await getDB();
+        // 1. Pegar a ILPI vinculada
+        const uiRes = await db.query<{ ilpi_id: string }>(
+          `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+          [user.id]
+        );
+
+        if (uiRes.rows.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        const ilpiId = uiRes.rows[0].ilpi_id;
+
+        // 2. Pegar colaboradores
+        const colabsRes = await db.query<any>(
+          `SELECT 
+            c.id, 
+            c.nome, 
+            c.email, 
+            c.telefone, 
+            c.regime, 
+            c.ativo, 
+            c.created_at,
+            cg.nome as cargo
+           FROM public.colaboradores c
+           LEFT JOIN public.cargos cg ON cg.id = c.cargo_id
+           WHERE c.ilpi_id = $1
+           ORDER BY c.nome;`,
+          [ilpiId]
+        );
+
+        const mapped: Colaborador[] = colabsRes.rows.map((row: any) => ({
+          id: row.id,
+          nome: row.nome,
+          email: row.email || "",
+          telefone: row.telefone || "",
+          cargo: row.cargo || "Sem cargo",
+          regime: row.regime || "Não definido",
+          foto_url: null,
+          ativo: row.ativo ?? true,
+          created_at: row.created_at,
+        }));
+
+        setColaboradores(mapped);
+      } catch (err) {
+        console.error("Erro ao carregar colaboradores do banco local:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    carregarDados();
   }, [router]);
 
   if (loading) {

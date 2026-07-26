@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
 import { useState } from "react";
+import { signOut } from "@/lib/auth";
 import {
   LayoutDashboard,
   Users,
@@ -13,13 +13,6 @@ import {
   Menu,
   X,
 } from "lucide-react";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Escalas", icon: LayoutDashboard },
@@ -38,8 +31,7 @@ export default function DashboardLayout({
   const [menuOpen, setMenuOpen] = useState(false);
 
   async function handleLogout() {
-    const supabase = getClient();
-    if (supabase) await supabase.auth.signOut();
+    await signOut();
     router.push("/login");
     router.refresh();
   }

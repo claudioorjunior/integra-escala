@@ -8,7 +8,14 @@
     "url": "https://github.com/integaborni/integra-escala.git"
   },
   "description": "Gerador automático de escalas de trabalho para ILPIs (Instituições de Longa Permanência para Idosos)",
-  "keywords": ["ilpi", "escala", "enfermagem", "saude", "nextjs", "supabase"],
+  "keywords": [
+    "ilpi",
+    "escala",
+    "enfermagem",
+    "saude",
+    "nextjs",
+    "supabase"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -18,6 +25,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.1",
     "@tabler/icons-react": "^3.44.0",

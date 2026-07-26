@@ -2,18 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
+import { getLocalUser } from "@/lib/auth";
+import { getDB } from "@/lib/db";
 import MonthCard from "@/components/calendar/MonthCard";
 import ScaleEditor from "@/components/calendar/ScaleEditor";
 import { Plus, Printer, Sparkles } from "lucide-react";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
 
 function getProximosMeses(qtd: number) {
   const hoje = new Date();
@@ -31,26 +24,58 @@ function getProximosMeses(qtd: number) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [mesEditando, setMesEditando] = useState<{ mes: number; ano: number } | null>(null);
+  
+  const [ilpiInfo, setIlpiInfo] = useState<{ nome: string; colaboradoresCount: number } | null>(null);
 
   const meses = getProximosMeses(6);
 
   useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) {
-      router.push("/login");
-      return;
-    }
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
+    async function carregarDados() {
+      const user = await getLocalUser();
+      if (!user) {
         router.push("/login");
         return;
       }
-      setUser(data.user);
-      setLoading(false);
-    });
+
+      try {
+        const db = await getDB();
+        
+        // 1. Pegar a ILPI
+        const uiRes = await db.query<{ ilpi_id: string }>(
+          `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+          [user.id]
+        );
+
+        if (uiRes.rows.length > 0) {
+          const ilpiId = uiRes.rows[0].ilpi_id;
+          
+          // Buscar nome da ILPI
+          const ilpiRes = await db.query<{ nome: string }>(
+            `SELECT nome FROM public.ilpis WHERE id = $1;`,
+            [ilpiId]
+          );
+          
+          // Buscar quantidade de colaboradores
+          const colabCountRes = await db.query<{ count: string }>(
+            `SELECT count(*) FROM public.colaboradores WHERE ilpi_id = $1;`,
+            [ilpiId]
+          );
+
+          setIlpiInfo({
+            nome: ilpiRes.rows[0]?.nome || "Minha ILPI",
+            colaboradoresCount: parseInt(colabCountRes.rows[0]?.count || "0", 10),
+          });
+        }
+      } catch (err) {
+        console.error("Erro ao carregar dados do dashboard local:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    carregarDados();
   }, [router]);
 
   if (loading) {
@@ -91,15 +116,15 @@ export default function DashboardPage() {
         </span>
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">ILPI:</span> Residencial Norteza
+          <span className="text-[#8b7d6b]">ILPI:</span> {ilpiInfo?.nome || "Carregando..."}
         </span>
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">Colaboradores:</span> 8
+          <span className="text-[#8b7d6b]">Colaboradores:</span> {ilpiInfo?.colaboradoresCount ?? 0}
         </span>
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">Convites pendentes:</span> 2
+          <span className="text-[#8b7d6b]">Convites pendentes:</span> 0
         </span>
       </div>
 
