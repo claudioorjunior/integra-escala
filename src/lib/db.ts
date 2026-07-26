@@ -73,3 +73,110 @@ export async function setSessionUser(db: PGlite, userId: string | null) {
     await db.exec(`SELECT set_config('request.jwt.claim.sub', '', false);`);
   }
 }
+
+export interface PlantaoDB {
+  colaboradorId: string;
+  dia: number;
+  horarioInicio: string;
+  horarioFim: string;
+}
+
+export async function buscarEscalaDoMes(userId: string, mes: number, ano: number) {
+  const db = await getDB();
+  
+  // 1. Pegar ILPI do usuário
+  const uiRes = await db.query<{ ilpi_id: string }>(
+    `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+    [userId]
+  );
+  if (uiRes.rows.length === 0) return { escalaMesId: null, plantoes: [] };
+  const ilpiId = uiRes.rows[0].ilpi_id;
+
+  // 2. Buscar escala_meses correspondente
+  const escalaMesRes = await db.query<{ id: string; status: string }>(
+    `SELECT id, status FROM public.escala_meses WHERE ilpi_id = $1 AND mes = $2 AND ano = $3;`,
+    [ilpiId, mes, ano]
+  );
+
+  if (escalaMesRes.rows.length === 0) {
+    return { escalaMesId: null, status: "rascunho", plantoes: [] };
+  }
+
+  const escalaMesId = escalaMesRes.rows[0].id;
+  const status = escalaMesRes.rows[0].status;
+
+  // 3. Buscar escala_dias
+  const diasRes = await db.query<any>(
+    `SELECT colaborador_id, dia, horario_inicio, horario_fim FROM public.escala_dias
+     WHERE escala_mes_id = $1;`,
+    [escalaMesId]
+  );
+
+  const plantoes: PlantaoDB[] = diasRes.rows.map((row: any) => ({
+    colaboradorId: row.colaborador_id,
+    dia: row.dia,
+    horarioInicio: row.horario_inicio,
+    horarioFim: row.horario_fim,
+  }));
+
+  return { escalaMesId, status, plantoes };
+}
+
+export async function salvarEscalaDoMes(
+  userId: string,
+  mes: number,
+  ano: number,
+  plantoes: PlantaoDB[],
+  status: "rascunho" | "publicada" = "rascunho"
+) {
+  const db = await getDB();
+  
+  // 1. Pegar ILPI
+  const uiRes = await db.query<{ ilpi_id: string }>(
+    `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+    [userId]
+  );
+  if (uiRes.rows.length === 0) throw new Error("Usuário não está vinculado a nenhuma ILPI.");
+  const ilpiId = uiRes.rows[0].ilpi_id;
+
+  // 2. Upsert escala_meses
+  const escalaMesRes = await db.query<{ id: string }>(
+    `INSERT INTO public.escala_meses (ilpi_id, mes, ano, status)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (ilpi_id, mes, ano) DO UPDATE SET status = EXCLUDED.status
+     RETURNING id;`,
+    [ilpiId, mes, ano, status]
+  );
+  const escalaMesId = escalaMesRes.rows[0].id;
+
+  // 3. Deletar escala_dias antigos para re-inserir todos
+  await db.query(`DELETE FROM public.escala_dias WHERE escala_mes_id = $1;`, [escalaMesId]);
+
+  // 4. Inserir escala_dias em lote
+  for (const p of plantoes) {
+    await db.query(
+      `INSERT INTO public.escala_dias (escala_mes_id, colaborador_id, dia, horario_inicio, horario_fim)
+       VALUES ($1, $2, $3, $4, $5);`,
+      [escalaMesId, p.colaboradorId, p.dia, p.horarioInicio, p.horarioFim]
+    );
+  }
+
+  return escalaMesId;
+}
+
+export async function excluirEscalaDoMes(userId: string, mes: number, ano: number) {
+  const db = await getDB();
+  const uiRes = await db.query<{ ilpi_id: string }>(
+    `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+    [userId]
+  );
+  if (uiRes.rows.length === 0) return;
+  const ilpiId = uiRes.rows[0].ilpi_id;
+
+  await db.query(`DELETE FROM public.escala_meses WHERE ilpi_id = $1 AND mes = $2 AND ano = $3;`, [
+    ilpiId,
+    mes,
+    ano,
+  ]);
+}
+

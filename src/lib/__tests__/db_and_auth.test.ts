@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { getDB } from "../db";
 import { signUp, signIn, getLocalUser } from "../auth";
+import { buscarEscalaDoMes, salvarEscalaDoMes, excluirEscalaDoMes } from "../db";
 
 // Ponytail: Simulamos o localStorage sem simular o window/document completo
 // Isso evita que o PGlite se confunda achando que está no browser
@@ -33,7 +34,33 @@ test("PGlite + Auth Local Flow", async () => {
   const session = await signIn("teste@norteza.com", "senha123");
   assert.equal(session.id, user.id);
 
-  // 4. Buscar do Storage simulado
+  // 4. Buscar colaboradores criados no seed
+  const colabsRes = await db.query<{ id: string }>("SELECT id FROM public.colaboradores;");
+  assert.equal(colabsRes.rows.length, 8);
+  const colabId = colabsRes.rows[0].id;
+
+  // 5. Salvar uma escala para o mês 7 de 2026
+  const plantoesMock = [
+    { colaboradorId: colabId, dia: 15, horarioInicio: "07:00", horarioFim: "19:00" },
+    { colaboradorId: colabId, dia: 16, horarioInicio: "19:00", horarioFim: "07:00" },
+  ];
+  await salvarEscalaDoMes(user.id, 7, 2026, plantoesMock, "rascunho");
+
+  // 6. Buscar a escala salva e validar os registros
+  const escala = await buscarEscalaDoMes(user.id, 7, 2026);
+  assert.ok(escala.escalaMesId);
+  assert.equal(escala.status, "rascunho");
+  assert.equal(escala.plantoes.length, 2);
+  assert.equal(escala.plantoes[0].dia, 15);
+  assert.equal(escala.plantoes[0].horarioInicio, "07:00:00"); // Postgres TIME formata como hh:mm:ss
+
+  // 7. Excluir a escala e validar a deleção
+  await excluirEscalaDoMes(user.id, 7, 2026);
+  const escalaExcluida = await buscarEscalaDoMes(user.id, 7, 2026);
+  assert.equal(escalaExcluida.escalaMesId, null);
+  assert.equal(escalaExcluida.plantoes.length, 0);
+
+  // 8. Buscar do Storage simulado
   const loadedUser = await getLocalUser();
   assert.ok(loadedUser);
   assert.equal(loadedUser?.nome, "Claudio Teste");
