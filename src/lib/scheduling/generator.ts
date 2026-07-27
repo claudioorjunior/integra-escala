@@ -5,15 +5,8 @@ import {
   type Horario,
   type EscalaGerada,
   type Aviso,
-  type OpcoesGeracao,
-  type PlantoesExistentes,
   type DiaDaSemana,
 } from "./types";
-
-function parseHorario(h: string): Horario {
-  const [inicio, fim] = h.split("-");
-  return { inicio: inicio.padStart(5, "0"), fim: fim.padStart(5, "0") };
-}
 
 function normalizarRegime(texto: string): Regime {
   const r = texto.toLowerCase().trim();
@@ -93,9 +86,11 @@ function distribuirAlternado(
   primeiroDia: number,
   rand: () => number
 ): number[] {
-  // Para 12x36: dia sim, dia não, a partir de um offset aleatório
-  const paridade = Math.floor(rand() * 2); // 0 ou 1
-  return diasDisponiveis.filter((d) => d % 2 === paridade);
+  // Para 12x36: dia sim, dia não, alinhado ao dia da semana do 1º dia do mês.
+  const primeiroDiaSemana = ((primeiroDia % 7) + 7) % 7; // 0=Domingo..6=Sábado
+  const paridadeBase = (primeiroDiaSemana % 2 === 0) ? 0 : 1;
+  const offset = Math.floor(rand() * 2);
+  return diasDisponiveis.filter((d) => d % 2 === ((paridadeBase + offset) % 2));
 }
 
 function distribuirComEspacamento(
@@ -137,7 +132,7 @@ export function gerarEscala(args: {
   mes: number;
   ano: number;
   colaboradores: Colaborador[];
-  existentes?: PlantoesExistentes;
+  existentes?: Record<number, Plantao[]>;
   manterAjustesManuais?: boolean;
   seed?: number;
 }): EscalaGerada {
@@ -176,9 +171,6 @@ export function gerarEscala(args: {
 
       if (diasFolga.has(diaSemana as 0 | 1 | 2 | 3 | 4 | 5 | 6)) continue;
       if (regime === "diarista" && ehFimDeSemana(diaSemana as DiaDaSemana)) continue;
-      if (regime === "noturnista" && ehFimDeSemana(diaSemana as DiaDaSemana)) {
-        // Noturnista pode trabalhar fins de semana, sem restrição extra
-      }
       diasDisponiveis.push(d);
     }
 
@@ -246,11 +238,13 @@ function calcularQtdDias(
 }
 
 export function validarEscala(args: {
+  mes: number;
+  ano: number;
   plantoes: Record<number, Plantao[]>;
   colaboradores: Colaborador[];
   totalDias: number;
 }): Aviso[] {
-  const { plantoes, colaboradores, totalDias } = args;
+  const { mes, ano, plantoes, colaboradores, totalDias } = args;
   const avisos: Aviso[] = [];
   const mapRegime = new Map(colaboradores.map((c) => [c.id, c.regime]));
   const mapNome = new Map(colaboradores.map((c) => [c.id, c.nome]));
@@ -329,7 +323,7 @@ export function validarEscala(args: {
   // 5. Carga horária semanal (>44h para 5x2)
   const horasPorSemana = new Map<string, Map<number, number>>(); // colaboradorId -> (semana -> horas)
   for (let d = 1; d <= totalDias; d++) {
-    const diaSemanaNum = new Date(2026, 0, d).getDay(); // aproximação, ano usado só para cálculo
+    const diaSemanaNum = new Date(ano, mes - 1, d).getDay();
     const semana = Math.ceil(d / 7);
     for (const p of (plantoes[d] ?? [])) {
       if (mapRegime.get(p.colaboradorId) !== "5x2") continue;
@@ -354,7 +348,7 @@ export function validarEscala(args: {
   // 6. DSR (Descanso Semanal Remunerado) — 5x2 precisa de ao menos 1 domingo de folga
   const domingosTrabalhados = new Map<string, number>();
   for (let d = 1; d <= totalDias; d++) {
-    const diaSemana = new Date(2026, 0, d).getDay();
+    const diaSemana = new Date(ano, mes - 1, d).getDay();
     if (diaSemana !== 0) continue; // só domingos
     for (const p of (plantoes[d] ?? [])) {
       if (mapRegime.get(p.colaboradorId) !== "5x2") continue;
@@ -366,7 +360,7 @@ export function validarEscala(args: {
     const totalDomingos = (() => {
       let count = 0;
       for (let d = 1; d <= totalDias; d++) {
-        if (new Date(2026, 0, d).getDay() === 0) count++;
+        if (new Date(ano, mes - 1, d).getDay() === 0) count++;
       }
       return count;
     })();

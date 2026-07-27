@@ -59,14 +59,6 @@ function mapColaboradorParaEscala(c: Colaborador): ColaboradorEscala {
   };
 }
 
-function inferirHorario(regime: string): {inicio: string; fim: string} {
-  if (regime === "12x36") return {inicio: "19:00", fim: "07:00"};
-  if (regime === "24/72") return {inicio: "07:00", fim: "07:00"};
-  if (regime === "5x2") return {inicio: "08:00", fim: "17:00"};
-  if (regime === "noturnista") return {inicio: "19:00", fim: "07:00"};
-  if (regime === "diarista") return {inicio: "07:00", fim: "15:00"};
-  return {inicio: "08:00", fim: "17:00"};
-}
 export default function ScaleEditor({
   mes,
   ano,
