@@ -20,6 +20,13 @@ export default function CadastroPage() {
 
     try {
       await signUp(email, password, nome);
+<<<<<<< HEAD
+=======
+      // Fazer login automático logo após cadastrar
+      await signIn(email, password);
+      router.push("/dashboard");
+      router.refresh();
+>>>>>>> origin/main
     } catch (err: any) {
       if (err?.code === "23505" && String(err?.constraint ?? "").includes("email")) {
         setError("Este email já está cadastrado.");
@@ -27,8 +34,8 @@ export default function CadastroPage() {
         setError("Erro ao criar conta. Tente novamente.");
       }
       setLoading(false);
-      return;
     }
+<<<<<<< HEAD
 
     // Fazer login automático logo após cadastrar
     try {
@@ -41,6 +48,8 @@ export default function CadastroPage() {
 
     router.push("/dashboard");
     router.refresh();
+=======
+>>>>>>> origin/main
   }
 
   return (

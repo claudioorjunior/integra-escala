@@ -2,16 +2,14 @@
 
 ## How to reproduce the uncommitted artifacts
 
-1. Copy `.env.local` from the main checkout if it exists:
-   ```bash
-   cp /Users/claudio/integra-escala/.env.local ./
-   ```
-   If missing, the app still works for public routes (landing, login, signup) — auth routes will show a "Configuração do Supabase ausente." message.
-
-2. Install dependencies (uses pnpm):
+1. Install dependencies (uses pnpm):
    ```bash
    pnpm install --frozen-lockfile
    ```
+
+> **Nota:** A aplicação usa PGlite (banco local WASM) e não requer
+> nenhum arquivo `.env` ou configuração de Supabase. Basta rodar o
+> servidor que o banco é inicializado automaticamente no navegador.
 
 ## How to run the server
 
@@ -44,6 +42,5 @@ PORT=3001 npx next dev -p 3001 > /path/to/log.log 2>&1 &
 
 ## Environment variables
 
-- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key
-- Without these, Supabase Auth/DB features are unavailable but the UI renders normally.
+Nenhuma. A aplicação usa PGlite local (IndexedDB no browser, memória no
+server) e não depende de variáveis de ambiente externas.
