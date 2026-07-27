@@ -75,8 +75,9 @@ async function initDB(): Promise<PGlite> {
 
     try {
       await db.exec(migration.sql);
-      await db.exec(
-        `INSERT INTO schema_migrations (name) VALUES (${migration.name});`
+      await db.query(
+        `INSERT INTO schema_migrations (name) VALUES ($1);`,
+        [migration.name]
       );
     } catch (err) {
       console.error(`Erro ao rodar migration ${migration.name}:`, err);

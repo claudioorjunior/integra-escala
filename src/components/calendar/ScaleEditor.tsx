@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { X, Sparkles, Printer, Trash2, Save } from "lucide-react";
 import { getLocalUser } from "@/lib/auth";
 import { getDB, buscarEscalaDoMes, salvarEscalaDoMes, excluirEscalaDoMes, PlantaoDB } from "@/lib/db";
+import { gerarEscala, type Colaborador as ColaboradorEscala } from "@/lib/scheduling";
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MESES = [
@@ -37,6 +38,35 @@ function getDiaSemana(dia: number, mes: number, ano: number) {
   return new Date(ano, mes - 1, dia).getDay();
 }
 
+
+function normalizarRegime(texto: string): ColaboradorEscala["regime"] {
+  const r = texto.toLowerCase().trim();
+  if (r.includes("24/72") || r.includes("24h/72h")) return "24/72";
+  if (r.includes("12x36") || r.includes("12h/36h")) return "12x36";
+  if (r.includes("5x2") || r.includes("5 dias")) return "5x2";
+  if (r.includes("noturn") || r === "noturnista") return "noturnista";
+  if (r.includes("diarista")) return "diarista";
+  return r as ColaboradorEscala["regime"];
+}
+
+function mapColaboradorParaEscala(c: Colaborador): ColaboradorEscala {
+  return {
+    id: c.id,
+    nome: c.nome,
+    cargoId: null,
+    cargoNome: c.cargo,
+    regime: normalizarRegime(c.regime),
+  };
+}
+
+function inferirHorario(regime: string): {inicio: string; fim: string} {
+  if (regime === "12x36") return {inicio: "19:00", fim: "07:00"};
+  if (regime === "24/72") return {inicio: "07:00", fim: "07:00"};
+  if (regime === "5x2") return {inicio: "08:00", fim: "17:00"};
+  if (regime === "noturnista") return {inicio: "19:00", fim: "07:00"};
+  if (regime === "diarista") return {inicio: "07:00", fim: "15:00"};
+  return {inicio: "08:00", fim: "17:00"};
+}
 export default function ScaleEditor({
   mes,
   ano,
@@ -49,6 +79,7 @@ export default function ScaleEditor({
   const [status, setStatus] = useState<"rascunho" | "publicada">("rascunho");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
 
   const totalDias = getTotalDias(mes, ano);
   const primeiroDiaSemana = getDiaSemana(1, mes, ano);
@@ -120,44 +151,40 @@ export default function ScaleEditor({
     carregarDados();
   }, [mes, ano, aberto]);
 
-  // Algoritmo simples de geração automática
+  // Algoritmo de geração automática (motor de scheduling)
   function handleGerarEscala() {
     const temDados = Object.values(plantoes).some((d) => Object.keys(d).length > 0);
     if (temDados && !confirm("Gerar a escala substituirá os plantões atuais deste mês. Continuar?")) return;
-    const novosPlantoes: Record<number, Record<string, string>> = {};
+    setGerando(true);
+    setErro(null);
 
-    for (let d = 1; d <= totalDias; d++) {
-      novosPlantoes[d] = {};
-      const diaSemana = getDiaSemana(d, mes, ano);
-      const isFimDeSemana = diaSemana === 0 || diaSemana === 6;
-
-      colaboradores.forEach((colab, i) => {
-        // Regra simples:
-        // - Cuidador 24/72: trabalha a cada 4 dias (usamos o dia + index % 4)
-        // - Noturnista 12x36: trabalha dia sim dia não (dia + index % 2)
-        // - Outros cargos / 5x2: trabalha apenas em dias de semana (seg-sex)
-        if (colab.regime.includes("24/72")) {
-          if ((d + i) % 4 === 0) {
-            novosPlantoes[d][colab.id] = "07:00-07:00";
-          }
-        } else if (colab.regime.includes("12x36")) {
-          if ((d + i) % 2 === 0) {
-            novosPlantoes[d][colab.id] = "19:00-07:00";
-          }
-        } else if (colab.regime.includes("5x2") || colab.regime.includes("8h")) {
-          if (!isFimDeSemana) {
-            novosPlantoes[d][colab.id] = "08:00-17:00";
-          }
-        } else {
-          // Fallback para preencher algo
-          if (d % 3 === 0) {
-            novosPlantoes[d][colab.id] = "07:00-15:00";
-          }
-        }
+    try {
+      const colabEscala: ColaboradorEscala[] = colaboradores.map(mapColaboradorParaEscala);
+      const resultado = gerarEscala({
+        mes,
+        ano,
+        colaboradores: colabEscala,
+        manterAjustesManuais: false,
+        seed: mes + ano * 100,
       });
-    }
 
-    setPlantoes(novosPlantoes);
+      const novosPlantoes: Record<number, Record<string, string>> = {};
+      for (let d = 1; d <= totalDias; d++) {
+        novosPlantoes[d] = {};
+        for (const p of resultado.plantoes[d] ?? []) {
+          novosPlantoes[d][p.colaboradorId] = `${p.horario.inicio}-${p.horario.fim}`;
+        }
+      }
+      setPlantoes(novosPlantoes);
+      if (resultado.avisos.length > 0) {
+        setErro(resultado.avisos.map((a) => a.mensagem).join("; "));
+      }
+    } catch (err) {
+      console.error("Erro ao gerar escala:", err);
+      setErro("Erro ao gerar escala. Tente novamente.");
+    } finally {
+      setGerando(false);
+    }
   }
 
   // Alternar turno ao clicar na célula
