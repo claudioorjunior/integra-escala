@@ -186,6 +186,51 @@ export async function salvarEscalaDoMes(
   });
 }
 
+// ─── Cargos CRUD ────────────────────────────────────────────────
+
+export async function criarCargo(
+  userId: string,
+  dados: { nome: string; regime: string; descricao?: string }
+) {
+  const db = await getDB();
+  const ilpiId = await getIlpiIdDoUsuario(db, userId);
+  if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  const res = await db.query<{ id: string }>(
+    `INSERT INTO public.cargos (ilpi_id, nome, regime, descricao)
+     VALUES ($1, $2, $3, $4) RETURNING id;`,
+    [ilpiId, dados.nome, dados.regime, dados.descricao ?? null]
+  );
+  return res.rows[0].id;
+}
+
+export async function atualizarCargo(
+  userId: string,
+  cargoId: string,
+  dados: { nome: string; regime: string; descricao?: string }
+) {
+  const db = await getDB();
+  const ilpiId = await getIlpiIdDoUsuario(db, userId);
+  if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  await db.query(
+    `UPDATE public.cargos SET nome = $1, regime = $2, descricao = $3
+     WHERE id = $4 AND ilpi_id = $5;`,
+    [dados.nome, dados.regime, dados.descricao ?? null, cargoId, ilpiId]
+  );
+}
+
+export async function excluirCargo(userId: string, cargoId: string) {
+  const db = await getDB();
+  const ilpiId = await getIlpiIdDoUsuario(db, userId);
+  if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  await db.query(
+    `DELETE FROM public.cargos WHERE id = $1 AND ilpi_id = $2;`,
+    [cargoId, ilpiId]
+  );
+}
+
 export async function excluirEscalaDoMes(userId: string, mes: number, ano: number) {
   const db = await getDB();
   const uiRes = await db.query<{ ilpi_id: string }>(
