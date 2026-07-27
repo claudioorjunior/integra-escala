@@ -194,10 +194,12 @@ export default function ScaleEditor({
       const atual = copy[dia][colabId];
       if (!atual) {
         // Define horário padrão baseado no regime
-        copy[dia][colabId] = regime.includes("12x36")
+        copy[dia][colabId] = regime.includes("12x36") || regime.includes("noturnista")
           ? "19:00-07:00"
           : regime.includes("24/72")
           ? "07:00-07:00"
+          : regime.includes("diarista")
+          ? "07:00-15:00"
           : "08:00-17:00";
       } else {
         // Remove o plantão daquele dia
