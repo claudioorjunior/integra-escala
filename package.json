@@ -14,11 +14,7 @@
     "enfermagem",
     "saude",
     "nextjs",
-<<<<<<< HEAD
     "pglite"
-=======
-    "supabase"
->>>>>>> origin/main
   ],
   "scripts": {
     "dev": "next dev",
