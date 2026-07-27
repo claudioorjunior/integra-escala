@@ -1,18 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "@/lib/auth";
 
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
-
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,32 +18,16 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const supabase = getClient();
-    if (!supabase) {
-      setError("Configuração do Supabase ausente.");
+    try {
+      await signIn(email, password);
+      const next = searchParams.get("next");
+      const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+      router.push(target);
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message || "Email ou senha inválidos.");
       setLoading(false);
-      return;
     }
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(
-        error.message === "Invalid login credentials"
-          ? "Email ou senha inválidos."
-          : error.message === "Email not confirmed"
-          ? "Confirme seu email antes de fazer login."
-          : "Erro ao fazer login. Tente novamente."
-      );
-      setLoading(false);
-      return;
-    }
-
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (
@@ -129,5 +107,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

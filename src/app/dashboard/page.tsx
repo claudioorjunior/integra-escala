@@ -2,18 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
+import { getLocalUser } from "@/lib/auth";
+import { getDB, buscarEscalaDoMes } from "@/lib/db";
 import MonthCard from "@/components/calendar/MonthCard";
 import ScaleEditor from "@/components/calendar/ScaleEditor";
 import { Plus, Printer, Sparkles } from "lucide-react";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
 
 function getProximosMeses(qtd: number) {
   const hoje = new Date();
@@ -29,28 +22,108 @@ function getProximosMeses(qtd: number) {
   return meses;
 }
 
+const CORES_PALETA = ["#1a3c34", "#c4b998", "#8b5e3c", "#5a7a6a", "#a0522d", "#6b8e7a", "#8b7355", "#556b5a"];
+
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [mesEditando, setMesEditando] = useState<{ mes: number; ano: number } | null>(null);
+  
+  const [ilpiInfo, setIlpiInfo] = useState<{ nome: string; colaboradoresCount: number } | null>(null);
+  const [escalasPorMes, setEscalasPorMes] = useState<Record<string, any[]>>({});
 
   const meses = getProximosMeses(6);
 
-  useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) {
+  async function carregarDados() {
+    const user = await getLocalUser();
+    if (!user) {
       router.push("/login");
       return;
     }
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
-        router.push("/login");
-        return;
+
+    try {
+      const db = await getDB();
+      
+      // 1. Pegar a ILPI
+      const uiRes = await db.query<{ ilpi_id: string }>(
+        `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+        [user.id]
+      );
+
+      if (uiRes.rows.length > 0) {
+        const ilpiId = uiRes.rows[0].ilpi_id;
+        
+        // Buscar nome da ILPI
+        const ilpiRes = await db.query<{ nome: string }>(
+          `SELECT nome FROM public.ilpis WHERE id = $1;`,
+          [ilpiId]
+        );
+        
+        // Buscar quantidade de colaboradores
+        const colabCountRes = await db.query<{ count: string }>(
+          `SELECT count(*) FROM public.colaboradores WHERE ilpi_id = $1;`,
+          [ilpiId]
+        );
+
+        // Buscar todos os colaboradores para resolver os nomes/cores no frontend
+        const colabsRes = await db.query<any>(
+          `SELECT id, nome FROM public.colaboradores WHERE ilpi_id = $1 ORDER BY nome;`,
+          [ilpiId]
+        );
+        const colabMap: Record<string, { nome: string; cor: string }> = {};
+        colabsRes.rows.forEach((c: any, index: number) => {
+          colabMap[c.id] = {
+            nome: c.nome.split(" ")[0],
+            cor: CORES_PALETA[index % CORES_PALETA.length],
+          };
+        });
+
+        setIlpiInfo({
+          nome: ilpiRes.rows[0]?.nome || "Minha ILPI",
+          colaboradoresCount: parseInt(colabCountRes.rows[0]?.count || "0", 10),
+        });
+
+        // Buscar escalas de todos os meses exibidos
+        const novasEscalas: Record<string, any[]> = {};
+        for (const m of meses) {
+          const chave = `${m.mes}-${m.ano}`;
+          const escala = await buscarEscalaDoMes(user.id, m.mes, m.ano);
+          
+          if (escala.plantoes.length > 0) {
+            // Agrupar por dia
+            const plantoesAgrupados: Record<number, any[]> = {};
+            escala.plantoes.forEach((p) => {
+              if (!plantoesAgrupados[p.dia]) plantoesAgrupados[p.dia] = [];
+              const cInfo = colabMap[p.colaboradorId] || { nome: "Externo", cor: "#999" };
+              plantoesAgrupados[p.dia].push({
+                nome: cInfo.nome,
+                cargo: "",
+                horario: `${p.horarioInicio}-${p.horarioFim}`,
+                cor: cInfo.cor,
+              });
+            });
+
+            const diasEscala = Object.entries(plantoesAgrupados).map(([diaStr, plantoesList]) => ({
+              dia: parseInt(diaStr, 10),
+              plantoes: plantoesList,
+            }));
+            
+            novasEscalas[chave] = diasEscala;
+          } else {
+            novasEscalas[chave] = [];
+          }
+        }
+        setEscalasPorMes(novasEscalas);
       }
-      setUser(data.user);
+    } catch (err) {
+      console.error("Erro ao carregar dados do dashboard local:", err);
+    } finally {
       setLoading(false);
-    });
+    }
+  }
+
+  useEffect(() => {
+    carregarDados();
   }, [router]);
 
   if (loading) {
@@ -91,29 +164,35 @@ export default function DashboardPage() {
         </span>
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">ILPI:</span> Residencial Norteza
+          <span className="text-[#8b7d6b]">ILPI:</span> {ilpiInfo?.nome || "Carregando..."}
         </span>
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">Colaboradores:</span> 8
+          <span className="text-[#8b7d6b]">Colaboradores:</span> {ilpiInfo?.colaboradoresCount ?? 0}
         </span>
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">Convites pendentes:</span> 2
+          <span className="text-[#8b7d6b]">Convites pendentes:</span> 0
         </span>
       </div>
 
       {/* Lista de meses */}
       <div className="space-y-5">
-        {meses.map(({ mes, ano, label }) => (
-          <MonthCard
-            key={`${mes}-${ano}`}
-            mes={mes}
-            ano={ano}
-            onEditar={() => setMesEditando({ mes, ano })}
-            onGerar={() => alert(`Gerar escala de ${label}`)}
-          />
-        ))}
+        {meses.map(({ mes, ano, label }) => {
+          const chave = `${mes}-${ano}`;
+          const diasReais = escalasPorMes[chave];
+          
+          return (
+            <MonthCard
+              key={chave}
+              mes={mes}
+              ano={ano}
+              dias={diasReais && diasReais.length > 0 ? diasReais : undefined}
+              onEditar={() => setMesEditando({ mes, ano })}
+              onGerar={() => setMesEditando({ mes, ano })}
+            />
+          );
+        })}
       </div>
 
       {/* Editor de escala (modal) */}
@@ -122,6 +201,7 @@ export default function DashboardPage() {
         ano={mesEditando?.ano ?? 2026}
         aberto={mesEditando !== null}
         onFechar={() => setMesEditando(null)}
+        onSalvo={carregarDados}
       />
     </>
   );

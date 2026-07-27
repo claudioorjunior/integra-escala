@@ -2,23 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-import type { User } from "@supabase/supabase-js";
+import { getLocalUser } from "@/lib/auth";
+import { getDB } from "@/lib/db";
 import { Plus, Search, Filter } from "lucide-react";
 import ColaboradorModal from "@/components/colaboradores/ColaboradorModal";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
+import { ptBR } from "@/lib/i18n/pt-BR";
 
 interface Colaborador {
   id: string;
   nome: string;
-  email: string;
-  telefone: string;
   cargo: string;
   regime: string;
   foto_url: string | null;
@@ -26,122 +18,73 @@ interface Colaborador {
   created_at: string;
 }
 
-// Mock data para demonstração
-const MOCK_COLABORADORES: Colaborador[] = [
-  {
-    id: "1",
-    nome: "Fátima Silva",
-    email: "fatima@integra.com",
-    telefone: "(21) 99999-1111",
-    cargo: "Cuidadora",
-    regime: "24/72",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-01-15",
-  },
-  {
-    id: "2",
-    nome: "Maria Souza",
-    email: "maria@integra.com",
-    telefone: "(21) 99999-2222",
-    cargo: "Técnica de Enfermagem",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-02-01",
-  },
-  {
-    id: "3",
-    nome: "João Costa",
-    email: "joao@integra.com",
-    telefone: "(21) 99999-3333",
-    cargo: "Noturnista",
-    regime: "12x36",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-02-15",
-  },
-  {
-    id: "4",
-    nome: "Carlos Pereira",
-    email: "carlos@integra.com",
-    telefone: "(21) 99999-4444",
-    cargo: "Cuidador",
-    regime: "24/72",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-03-01",
-  },
-  {
-    id: "5",
-    nome: "Ana Oliveira",
-    email: "ana@integra.com",
-    telefone: "(21) 99999-5555",
-    cargo: "Noturnista",
-    regime: "12x36",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-03-10",
-  },
-  {
-    id: "6",
-    nome: "José Santos",
-    email: "jose@integra.com",
-    telefone: "(21) 99999-6666",
-    cargo: "Diarista",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-03-20",
-  },
-  {
-    id: "7",
-    nome: "Rita Lima",
-    email: "rita@integra.com",
-    telefone: "(21) 99999-7777",
-    cargo: "Técnica de Enfermagem",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: true,
-    created_at: "2026-04-01",
-  },
-  {
-    id: "8",
-    nome: "Lúcia Mendes",
-    email: "lucia@integra.com",
-    telefone: "(21) 99999-8888",
-    cargo: "Técnica de Enfermagem",
-    regime: "5x2 (8h)",
-    foto_url: null,
-    ativo: false,
-    created_at: "2026-04-15",
-  },
-];
-
 export default function ColaboradoresPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [colaboradores, setColaboradores] = useState<Colaborador[]>(MOCK_COLABORADORES);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [colaboradorSelecionado, setColaboradorSelecionado] = useState<Colaborador | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const [filtroCargo, setFiltroCargo] = useState<string>("todos");
 
   useEffect(() => {
-    const supabase = getClient();
-    if (!supabase) {
-      router.push("/login");
-      return;
-    }
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
+    async function carregarDados() {
+      const user = await getLocalUser();
+      if (!user) {
         router.push("/login");
         return;
       }
-      setUser(data.user);
-      setLoading(false);
-    });
+
+      try {
+        const db = await getDB();
+        // 1. Pegar a ILPI vinculada
+        const uiRes = await db.query<{ ilpi_id: string }>(
+          `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+          [user.id]
+        );
+
+        if (uiRes.rows.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        const ilpiId = uiRes.rows[0].ilpi_id;
+
+        // 2. Pegar colaboradores
+        const colabsRes = await db.query<any>(
+          `SELECT 
+            c.id, 
+            c.nome, 
+            c.regime, 
+            c.ativo, 
+            c.created_at,
+            cg.nome as cargo
+           FROM public.colaboradores c
+           LEFT JOIN public.cargos cg ON cg.id = c.cargo_id
+           WHERE c.ilpi_id = $1
+           ORDER BY c.nome;`,
+          [ilpiId]
+        );
+
+        const mapped: Colaborador[] = colabsRes.rows.map((row: any) => ({
+          id: row.id,
+          nome: row.nome,
+          cargo: row.cargo || "Sem cargo",
+          regime: row.regime || "Não definido",
+          foto_url: null,
+          ativo: row.ativo ?? true,
+          created_at: row.created_at,
+        }));
+
+        setColaboradores(mapped);
+      } catch (err) {
+        console.error("Erro ao carregar colaboradores do banco local:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    carregarDados();
   }, [router]);
 
   if (loading) {
@@ -155,8 +98,7 @@ export default function ColaboradoresPage() {
   const cargos = ["todos", ...new Set(colaboradores.map((c) => c.cargo))];
 
   const colaboradoresFiltrados = colaboradores.filter((c) => {
-    const matchBusca = c.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      c.email.toLowerCase().includes(busca.toLowerCase());
+    const matchBusca = c.nome.toLowerCase().includes(busca.toLowerCase());
     const matchCargo = filtroCargo === "todos" || c.cargo === filtroCargo;
     return matchBusca && matchCargo;
   });
@@ -193,7 +135,7 @@ export default function ColaboradoresPage() {
           <Search size={16} strokeWidth={2} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8b7d6b]" />
           <input
             type="text"
-            placeholder="Buscar por nome ou email..."
+            placeholder="Buscar por nome..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-[#d4cdc0] rounded-lg text-sm focus:outline-none focus:border-[#1a3c34] transition"
@@ -216,56 +158,62 @@ export default function ColaboradoresPage() {
       </div>
 
       {/* Lista de colaboradores */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {colaboradoresFiltrados.map((colaborador) => (
-          <div
-            key={colaborador.id}
-            onClick={() => abrirModal(colaborador)}
-            className="bg-white rounded-xl border border-[#e8e2d4] p-5 cursor-pointer hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-start gap-4">
-              {/* Foto */}
-              <div className="w-16 h-16 rounded-full bg-[#1a3c34]/10 flex items-center justify-center shrink-0">
-                {colaborador.foto_url ? (
-                  <img
-                    src={colaborador.foto_url}
-                    alt={colaborador.nome}
-                    className="w-16 h-16 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="text-2xl font-medium text-[#1a3c34]">
-                    {colaborador.nome.charAt(0)}
-                  </span>
-                )}
-              </div>
+      {colaboradoresFiltrados.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[#e8e2d4] px-5 py-12 text-center text-[#8b7d6b]">
+          {ptBR.emptyStates.colaboradores.noTeamMembersFound}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {colaboradoresFiltrados.map((colaborador) => (
+            <div
+              key={colaborador.id}
+              onClick={() => abrirModal(colaborador)}
+              className="bg-white rounded-xl border border-[#e8e2d4] p-5 cursor-pointer hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start gap-4">
+                {/* Foto */}
+                <div className="w-16 h-16 rounded-full bg-[#1a3c34]/10 flex items-center justify-center shrink-0">
+                  {colaborador.foto_url ? (
+                    <img
+                      src={colaborador.foto_url}
+                      alt={colaborador.nome}
+                      className="w-16 h-16 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl font-medium text-[#1a3c34]">
+                      {colaborador.nome.charAt(0)}
+                    </span>
+                  )}
+                </div>
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <h3 className="text-base font-medium text-[#1a3c34] truncate">
-                  {colaborador.nome}
-                </h3>
-                <p className="text-sm text-[#8b7d6b] mt-0.5">
-                  {colaborador.cargo}
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      colaborador.ativo
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {colaborador.ativo ? "Ativo" : "Inativo"}
-                  </span>
-                  <span className="text-xs text-[#8b7d6b]">
-                    {colaborador.regime}
-                  </span>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-medium text-[#1a3c34] truncate">
+                    {colaborador.nome}
+                  </h3>
+                  <p className="text-sm text-[#8b7d6b] mt-0.5">
+                    {colaborador.cargo}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        colaborador.ativo
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {colaborador.ativo ? "Ativo" : "Inativo"}
+                    </span>
+                    <span className="text-xs text-[#8b7d6b]">
+                      {colaborador.regime}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Modal de detalhes */}
       <ColaboradorModal

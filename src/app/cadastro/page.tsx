@@ -2,14 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
-
-function getClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  return createBrowserClient(url, key);
-}
+import { signUp, signIn } from "@/lib/auth";
 
 export default function CadastroPage() {
   const router = useRouter();
@@ -19,71 +12,26 @@ export default function CadastroPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const supabase = getClient();
-    if (!supabase) {
-      setError("Configuração do Supabase ausente.");
+    try {
+      await signUp(email, password, nome);
+      // Fazer login automático logo após cadastrar
+      await signIn(email, password);
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err: any) {
+      if (err?.code === "23505" && String(err?.constraint ?? "").includes("email")) {
+        setError("Este email já está cadastrado.");
+      } else {
+        setError("Erro ao criar conta. Tente novamente.");
+      }
       setLoading(false);
-      return;
     }
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { nome },
-      },
-    });
-
-    if (signUpError) {
-      setError(
-        signUpError.message === "User already registered"
-          ? "Este email já está cadastrado."
-          : "Erro ao criar conta. Tente novamente."
-      );
-      setLoading(false);
-      return;
-    }
-
-    setSuccess(true);
-    setLoading(false);
-  }
-
-  if (success) {
-    return (
-      <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center scale-110"
-          style={{ backgroundImage: "url('/bg-login.jpg')" }}
-        />
-        <div className="absolute inset-0 backdrop-blur-[6px] bg-black/20" />
-
-        <div className="relative z-10 w-full max-w-md mx-4">
-          <div className="bg-white/95 backdrop-blur rounded-2xl shadow-2xl px-10 py-12 text-center">
-            <div className="flex justify-center mb-6">
-              <img src="/logo-integra-escala.png" alt="Integra Escala" className="h-20 w-auto" />
-            </div>
-            <h2 className="text-xl font-medium text-[#1a3c34] mb-3">Conta criada!</h2>
-            <p className="text-[#555] text-sm mb-6">
-              Enviamos um link de confirmação para <strong>{email}</strong>.
-              Verifique sua caixa de entrada e clique no link para ativar sua conta.
-            </p>
-            <a
-              href="/login"
-              className="inline-block bg-[#1a3c34] text-white font-medium rounded-lg px-6 py-3 text-sm hover:bg-[#143028]"
-            >
-              Ir para o login
-            </a>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   return (

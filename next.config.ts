@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   async headers() {
-    const supabaseHost = "*.supabase.co";
     return [
       {
         source: "/:path*",
@@ -35,7 +34,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' data:",
               "style-src 'self' 'unsafe-inline'",
               "script-src 'self' 'unsafe-inline'",
-              `connect-src 'self' https://${supabaseHost} wss://${supabaseHost}`,
+              "connect-src 'self'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
