@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Pencil, Sparkles, X } from "lucide-react";
+import { ptBR } from "@/lib/i18n/pt-BR";
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MESES = [
@@ -117,7 +118,7 @@ export default function MonthCard({
           {dias && dias.length > 0 ? (
             <span>{colaboradoresNoMes} colaboradores escalados neste mês</span>
           ) : (
-            <span>Nenhuma escala gerada para este mês</span>
+            <span>{ptBR.emptyStates.monthCard.noScheduleGenerated}</span>
           )}
           <span>•</span>
           <span>{totalDias} dias</span>

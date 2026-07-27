@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getLocalUser } from "@/lib/auth";
+import { getLocalUser, signOut } from "@/lib/auth";
 import { getDB } from "@/lib/db";
 import { Plus, Search, Filter } from "lucide-react";
 import ColaboradorModal from "@/components/colaboradores/ColaboradorModal";
@@ -31,6 +31,7 @@ export default function ColaboradoresPage() {
     async function carregarDados() {
       const user = await getLocalUser();
       if (!user) {
+        await signOut();
         router.push("/login");
         return;
       }
@@ -44,7 +45,6 @@ export default function ColaboradoresPage() {
         );
 
         if (uiRes.rows.length === 0) {
-          setLoading(false);
           return;
         }
 
@@ -168,6 +168,9 @@ export default function ColaboradoresPage() {
             <div
               key={colaborador.id}
               onClick={() => abrirModal(colaborador)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirModal(colaborador); } }}
+              role="button"
+              tabIndex={0}
               className="bg-white rounded-xl border border-[#e8e2d4] p-5 cursor-pointer hover:shadow-md transition-shadow"
             >
               <div className="flex items-start gap-4">

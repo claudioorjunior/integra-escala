@@ -82,7 +82,7 @@ The app bootstraps its first user on signup via `handle_new_user()` trigger in m
 
 ## Project structure
 
-```
+```text
 integra-escala/
 ├── src/
 │   ├── app/                 # Next.js App Router

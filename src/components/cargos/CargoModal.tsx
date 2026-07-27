@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Save, Trash2 } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
+import { REGIMES_VALIDOS } from "@/lib/scheduling";
+import Modal from "@/components/ui/Modal";
 
-const REGIMES = ["24/72", "12x36", "5x2", "8h/dia"];
+const REGIMES = [...REGIMES_VALIDOS];
 
 interface Cargo {
   id: string;
@@ -28,7 +30,7 @@ export default function CargoModal({
   onExcluir,
 }: CargoModalProps) {
   const [nome, setNome] = useState("");
-  const [regime, setRegime] = useState(REGIMES[0]);
+  const [regime, setRegime] = useState<string>(REGIMES[0]);
   const [descricao, setDescricao] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -79,18 +81,21 @@ export default function CargoModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <Modal
+      aberto={aberto}
+      onFechar={onFechar}
+      titulo={editando ? "Editar Cargo" : "Novo Cargo"}
+      size="md"
+    >
+      <div className="relative">
         {/* Header */}
         <div className="bg-gradient-to-br from-[#1a3c34] to-[#2a5c4a] px-6 py-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-white">
-              {editando ? "Editar Cargo" : "Novo Cargo"}
-            </h2>
-            <button onClick={onFechar} className="text-white/70 hover:text-white p-1">
-              <X size={20} strokeWidth={2} />
-            </button>
-          </div>
+          <h2
+            id={`modal-title-${editando ? "editar-cargo" : "novo-cargo"}`}
+            className="text-lg font-medium text-white"
+          >
+            {editando ? "Editar Cargo" : "Novo Cargo"}
+          </h2>
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
@@ -178,6 +183,6 @@ export default function CargoModal({
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 }

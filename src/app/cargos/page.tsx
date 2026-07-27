@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { getLocalUser } from "@/lib/auth";
+import { getLocalUser, signOut } from "@/lib/auth";
 import { getDB, criarCargo, atualizarCargo, excluirCargo } from "@/lib/db";
 import { Briefcase, Plus } from "lucide-react";
 import { ptBR } from "@/lib/i18n/pt-BR";
@@ -25,6 +25,7 @@ export default function CargosPage() {
   const carregarCargos = useCallback(async () => {
     const user = await getLocalUser();
     if (!user) {
+      await signOut();
       router.push("/login");
       return;
     }
@@ -132,6 +133,9 @@ export default function CargosPage() {
             <div
               key={cargo.id}
               onClick={() => abrirEditar(cargo)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirEditar(cargo); } }}
+              role="button"
+              tabIndex={0}
               className="bg-white rounded-xl border border-[#e8e2d4] p-5 hover:shadow-sm transition-shadow flex items-start gap-4 cursor-pointer"
             >
               <div className="w-10 h-10 rounded-xl bg-[#1a3c34]/10 flex items-center justify-center shrink-0">

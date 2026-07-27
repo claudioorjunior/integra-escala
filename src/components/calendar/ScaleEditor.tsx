@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { X, Sparkles, Printer, Trash2, Save } from "lucide-react";
 import { getLocalUser } from "@/lib/auth";
 import { getDB, buscarEscalaDoMes, salvarEscalaDoMes, excluirEscalaDoMes, PlantaoDB } from "@/lib/db";
-import { gerarEscala, type Colaborador as ColaboradorEscala } from "@/lib/scheduling";
+import { gerarEscala, type Colaborador as ColaboradorEscala, normalizarRegime, horarioPeloRegime, type Aviso } from "@/lib/scheduling";
+import Modal from "@/components/ui/Modal";
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MESES = [
@@ -39,23 +40,14 @@ function getDiaSemana(dia: number, mes: number, ano: number) {
 }
 
 
-function normalizarRegime(texto: string): ColaboradorEscala["regime"] {
-  const r = texto.toLowerCase().trim();
-  if (r.includes("24/72") || r.includes("24h/72h")) return "24/72";
-  if (r.includes("12x36") || r.includes("12h/36h")) return "12x36";
-  if (r.includes("5x2") || r.includes("5 dias")) return "5x2";
-  if (r.includes("noturn") || r === "noturnista") return "noturnista";
-  if (r.includes("diarista")) return "diarista";
-  return r as ColaboradorEscala["regime"];
-}
-
 function mapColaboradorParaEscala(c: Colaborador): ColaboradorEscala {
+  const regime = normalizarRegime(c.regime);
   return {
     id: c.id,
     nome: c.nome,
     cargoId: null,
     cargoNome: c.cargo,
-    regime: normalizarRegime(c.regime),
+    regime: regime ?? "5x2", // fallback para regimes não reconhecidos
   };
 }
 
@@ -71,7 +63,7 @@ export default function ScaleEditor({
   const [status, setStatus] = useState<"rascunho" | "publicada">("rascunho");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [gerando, setGerando] = useState(false);
+  const [avisos, setAvisos] = useState<Aviso[]>([]);
 
   const totalDias = getTotalDias(mes, ano);
   const primeiroDiaSemana = getDiaSemana(1, mes, ano);
@@ -86,24 +78,26 @@ export default function ScaleEditor({
   useEffect(() => {
     if (!aberto) return;
 
+    let cancelled = false;
+
     async function carregarDados() {
       const user = await getLocalUser();
-      if (!user) return;
+      if (!user || cancelled) return;
 
       setLoading(true);
       try {
         const db = await getDB();
-        
+
         // 1. Carregar colaboradores reais
         const uiRes = await db.query<{ ilpi_id: string }>(
           `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
           [user.id]
         );
-        if (uiRes.rows.length === 0) return;
+        if (uiRes.rows.length === 0 || cancelled) return;
         const ilpiId = uiRes.rows[0].ilpi_id;
 
         const colabsRes = await db.query<any>(
-          `SELECT c.id, c.nome, c.regime, cg.nome as cargo 
+          `SELECT c.id, c.nome, c.regime, cg.nome as cargo
            FROM public.colaboradores c
            LEFT JOIN public.cargos cg ON cg.id = c.cargo_id
            WHERE c.ilpi_id = $1 AND c.ativo = true
@@ -111,6 +105,7 @@ export default function ScaleEditor({
           [ilpiId]
         );
 
+        if (cancelled) return;
         const colabsMapped: Colaborador[] = colabsRes.rows.map((row: any, i: number) => ({
           id: row.id,
           nome: row.nome,
@@ -122,12 +117,12 @@ export default function ScaleEditor({
 
         // 2. Carregar escala salva
         const escala = await buscarEscalaDoMes(user.id, mes, ano);
+        if (cancelled) return;
         setStatus(escala.status as any || "rascunho");
 
         const plantoesRecord: Record<number, Record<string, string>> = {};
         for (const p of escala.plantoes) {
           if (!plantoesRecord[p.dia]) plantoesRecord[p.dia] = {};
-          // Reconstrói o intervalo "HH:MM-HH:MM" a partir das colunas TIME do banco
           const inicio = (p.horarioInicio ?? "07:00").slice(0, 5);
           const fim = (p.horarioFim ?? "19:00").slice(0, 5);
           plantoesRecord[p.dia][p.colaboradorId] = `${inicio}-${fim}`;
@@ -135,20 +130,22 @@ export default function ScaleEditor({
         setPlantoes(plantoesRecord);
       } catch (err) {
         console.error("Erro ao carregar escala:", err);
+        if (!cancelled) setErro("Não foi possível carregar a escala. Tente novamente.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     carregarDados();
+    return () => { cancelled = true; };
   }, [mes, ano, aberto]);
 
   // Algoritmo de geração automática (motor de scheduling)
   function handleGerarEscala() {
     const temDados = Object.values(plantoes).some((d) => Object.keys(d).length > 0);
     if (temDados && !confirm("Gerar a escala substituirá os plantões atuais deste mês. Continuar?")) return;
-    setGerando(true);
     setErro(null);
+    setAvisos([]);
 
     try {
       const colabEscala: ColaboradorEscala[] = colaboradores.map(mapColaboradorParaEscala);
@@ -169,30 +166,26 @@ export default function ScaleEditor({
       }
       setPlantoes(novosPlantoes);
       if (resultado.avisos.length > 0) {
-        setErro(resultado.avisos.map((a) => a.mensagem).join("; "));
+        setAvisos(resultado.avisos);
       }
     } catch (err) {
       console.error("Erro ao gerar escala:", err);
       setErro("Erro ao gerar escala. Tente novamente.");
-    } finally {
-      setGerando(false);
     }
   }
 
   // Alternar turno ao clicar na célula
-  function toggleCélula(dia: number, colabId: string, regime: string) {
+  function toggleCell(dia: number, colabId: string, regime: string) {
     setPlantoes((prev) => {
       const copy = { ...prev, [dia]: { ...(prev[dia] ?? {}) } };
       const atual = copy[dia][colabId];
       if (!atual) {
-        // Define horário padrão baseado no regime
-        copy[dia][colabId] = regime.includes("12x36") || regime.includes("noturnista")
-          ? "19:00-07:00"
-          : regime.includes("24/72")
-          ? "07:00-07:00"
-          : regime.includes("diarista")
-          ? "07:00-15:00"
-          : "08:00-17:00";
+        // Define horário padrão usando horarioPeloRegime do motor
+        const regimeNormalizado = normalizarRegime(regime);
+        const horario = regimeNormalizado
+          ? horarioPeloRegime(regimeNormalizado)
+          : { inicio: "08:00", fim: "17:00" };
+        copy[dia][colabId] = `${horario.inicio}-${horario.fim}`;
       } else {
         // Remove o plantão daquele dia
         delete copy[dia][colabId];
@@ -256,43 +249,42 @@ export default function ScaleEditor({
   if (!aberto) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/40 backdrop-blur-sm">
-      <div className="relative w-full max-w-6xl mx-4 my-6">
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8e2d4]">
-            <div>
-              <h2 className="text-lg font-medium text-[#1a3c34]">
-                {MESES[mes - 1]} {ano}
-              </h2>
-              <p className="text-xs text-[#8b7d6b] mt-0.5">
-                Clique nas células para alternar a escala do colaborador
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleGerarEscala}
-                disabled={loading}
-                className="bg-[#1a3c34] text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-[#143028] transition flex items-center gap-2 disabled:opacity-50"
-              >
-                <Sparkles size={14} strokeWidth={2} />
-                Gerar Escala
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="border border-[#d4cdc0] text-[#555] text-sm font-medium rounded-lg px-4 py-2 hover:border-[#1a3c34] hover:text-[#1a3c34] transition flex items-center gap-2"
-              >
-                <Printer size={14} strokeWidth={2} />
-                Imprimir
-              </button>
-              <button
-                onClick={onFechar}
-                className="text-[#8b7d6b] hover:text-[#555] p-2"
-              >
-                <X size={18} strokeWidth={2} />
-              </button>
-            </div>
-          </div>
+    <Modal
+      aberto={aberto}
+      onFechar={onFechar}
+      titulo={`${MESES[mes - 1]} ${ano}`}
+      size="xl"
+      overlayClassName="flex items-start justify-center overflow-auto bg-black/40"
+      dialogClassName="mx-4 my-6"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8e2d4]">
+        <div>
+          <h2 className="text-lg font-medium text-[#1a3c34]">
+            {MESES[mes - 1]} {ano}
+          </h2>
+          <p className="text-xs text-[#8b7d6b] mt-0.5">
+            Clique nas células para alternar a escala do colaborador
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleGerarEscala}
+            disabled={loading}
+            className="bg-[#1a3c34] text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-[#143028] transition flex items-center gap-2 disabled:opacity-50"
+          >
+            <Sparkles size={14} strokeWidth={2} />
+            Gerar Escala
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="border border-[#d4cdc0] text-[#555] text-sm font-medium rounded-lg px-4 py-2 hover:border-[#1a3c34] hover:text-[#1a3c34] transition flex items-center gap-2"
+          >
+            <Printer size={14} strokeWidth={2} />
+            Imprimir
+          </button>
+        </div>
+      </div>
 
           {/* Legenda */}
           <div className="px-6 py-3 border-b border-[#e8e2d4] bg-[#faf8f4]">
@@ -372,11 +364,11 @@ export default function ScaleEditor({
                             <button
                               type="button"
                               key={`${colab.id}-${dia}`}
-                              onClick={() => toggleCélula(dia, colab.id, colab.regime)}
+                              onClick={() => toggleCell(dia, colab.id, colab.regime)}
                               aria-pressed={Boolean(turno)}
                               aria-label={`${colab.nome} — dia ${dia}${turno ? `, ${turno}` : ", sem plantão"}`}
-                              className={`bg-white px-1 py-1 text-[11px] leading-tight min-h-[38px] cursor-pointer transition-colors hover:bg-[#f0ede5] ${
-                                isFimDeSemana ? "bg-[#faf8f4]" : ""
+                              className={`px-1 py-1 text-[11px] leading-tight min-h-[38px] cursor-pointer transition-colors hover:bg-[#f0ede5] ${
+                                isFimDeSemana ? "bg-[#faf8f4]" : "bg-white"
                               }`}
                               title={`${colab.nome} - Dia ${dia}`}
                             >
@@ -428,6 +420,22 @@ export default function ScaleEditor({
               {erro && (
                 <span className="text-xs text-red-600 font-medium">{erro}</span>
               )}
+              {avisos.length > 0 && (
+                <div className="flex flex-col gap-1 max-w-md">
+                  {avisos.map((a, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                      <span className="font-medium">{a.tipo}:</span>
+                      <span className="flex-1">{a.mensagem}</span>
+                      <button
+                        onClick={() => setAvisos(avisos.filter((_, j) => j !== i))}
+                        className="text-amber-600 hover:text-amber-800"
+                      >
+                        <X size={12} strokeWidth={2} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button
                 onClick={handleDescartar}
                 disabled={loading}
@@ -446,8 +454,6 @@ export default function ScaleEditor({
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

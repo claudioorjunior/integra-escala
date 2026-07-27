@@ -201,7 +201,8 @@ BEGIN
 
     SELECT * INTO v_convite FROM public.convites
     WHERE token_hash = v_token_hash
-    LIMIT 1;
+    LIMIT 1
+    FOR UPDATE;
 
     IF NOT FOUND THEN
         RETURN json_build_object(

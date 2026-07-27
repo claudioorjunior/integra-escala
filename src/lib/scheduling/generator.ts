@@ -8,21 +8,24 @@ import {
   type DiaDaSemana,
 } from "./types";
 
-function normalizarRegime(texto: string): Regime {
+/** Regimes reconhecidos pelo motor de geração. */
+export const REGIMES_VALIDOS = ["24/72", "12x36", "5x2", "noturnista", "diarista"] as const;
+
+export function normalizarRegime(texto: string): Regime | undefined {
   const r = texto.toLowerCase().trim();
   if (r === "24/72" || r === "24h/72h") return "24/72";
   if (r === "12x36" || r === "12h/36h") return "12x36";
   if (r === "5x2" || r === "5 dias / 2 dias") return "5x2";
   if (r.includes("noturn") || r === "noturnista") return "noturnista";
   if (r.includes("diarista") || r === "diarista") return "diarista";
-  return r as Regime;
+  return undefined;
 }
 
-interface HorarioComTurno extends Horario {
+export interface HorarioComTurno extends Horario {
   turno: string;
 }
 
-function horarioPeloRegime(regime: Regime): HorarioComTurno {
+export function horarioPeloRegime(regime: Regime): HorarioComTurno {
   switch (regime) {
     case "24/72":
       return { inicio: "07:00", fim: "07:00", turno: "integral" };
@@ -56,7 +59,8 @@ function ehFimDeSemana(diaSemana: DiaDaSemana): boolean {
 
 function gerarSeed(seed: number | undefined): () => number {
   // MINSTD LCG; 0 preso em 0 (0 * 16807 = 0), então pula
-  let s = (seed ?? Date.now()) || 1;
+  let s = ((seed ?? Date.now()) % 2147483647) || 1;
+  if (s < 0) s += 2147483646;
   return () => {
     s = (s * 16807) % 2147483647;
     return s / 2147483647;
@@ -83,14 +87,11 @@ function distribuirEquilibrado(
 
 function distribuirAlternado(
   diasDisponiveis: number[],
-  primeiroDia: number,
-  rand: () => number
+  paridade: number // 0 ou 1, derivado do índice estável do colaborador
 ): number[] {
-  // Para 12x36: dia sim, dia não, alinhado ao dia da semana do 1º dia do mês.
-  const primeiroDiaSemana = ((primeiroDia % 7) + 7) % 7; // 0=Domingo..6=Sábado
-  const paridadeBase = (primeiroDiaSemana % 2 === 0) ? 0 : 1;
-  const offset = Math.floor(rand() * 2);
-  return diasDisponiveis.filter((d) => d % 2 === ((paridadeBase + offset) % 2));
+  // Para 12x36: dia sim, dia não. Paridade determinística pelo índice do colaborador,
+  // garantindo que colaboradores pareados recebam paridades opostas e cubram todos os dias.
+  return diasDisponiveis.filter((d) => d % 2 === paridade);
 }
 
 function distribuirComEspacamento(
@@ -116,12 +117,27 @@ function distribuirComEspacamento(
     }
   }
 
-  // Se não conseguiu preencher, força os restantes nos dias mais distantes
+  // Se não conseguiu preencher, relaxa gradualmente o espaçamento
   if (resultado.length < qtdNecessaria) {
     const restantes = pool.filter((d) => !resultado.includes(d));
-    for (const d of restantes) {
-      if (resultado.length >= qtdNecessaria) break;
-      resultado.push(d);
+    for (let threshold = espacamentoMinimo - 1; threshold >= 1 && resultado.length < qtdNecessaria; threshold--) {
+      for (const d of restantes) {
+        if (resultado.length >= qtdNecessaria) break;
+        if (!resultado.includes(d)) {
+          const lastDia = resultado.length > 0 ? resultado[resultado.length - 1] : -Infinity;
+          if (d >= lastDia + threshold) {
+            resultado.push(d);
+          }
+        }
+      }
+    }
+    // Último recurso: adiciona dias restantes quando não há alternativa
+    if (resultado.length < qtdNecessaria) {
+      const stillMissing = pool.filter((d) => !resultado.includes(d));
+      for (const d of stillMissing) {
+        if (resultado.length >= qtdNecessaria) break;
+        resultado.push(d);
+      }
     }
   }
 
@@ -146,8 +162,26 @@ export function gerarEscala(args: {
   const plantoes: Record<number, Plantao[]> = {};
   for (let d = 1; d <= totalDias; d++) plantoes[d] = [];
 
-  for (const colab of colaboradores) {
+  // Seed from existing manual adjustments when preserving them
+  if (manterAjustesManuais && args.existentes) {
+    for (const [diaStr, ps] of Object.entries(args.existentes)) {
+      const dia = parseInt(diaStr, 10);
+      if (dia >= 1 && dia <= totalDias) {
+        plantoes[dia] = [...(plantoes[dia] ?? []), ...ps];
+      }
+    }
+  }
+
+  for (const [colabIndex, colab] of colaboradores.entries()) {
     const regime = normalizarRegime(colab.regime);
+    if (regime === undefined) {
+      avisos.push({
+        tipo: "colaborador_sem_regime",
+        colaboradorId: colab.id,
+        mensagem: `${colab.nome} tem regime não reconhecido: "${colab.regime}".`,
+      });
+      continue;
+    }
     const horario = colab.horarioNominal
       ? { ...colab.horarioNominal, turno: horarioPeloRegime(regime).turno }
       : horarioPeloRegime(regime);
@@ -166,6 +200,8 @@ export function gerarEscala(args: {
 
     const diasDisponiveis: number[] = [];
     for (let d = 1; d <= totalDias; d++) {
+      // Skip days where this collaborator already has a manual plantão
+      if (manterAjustesManuais && plantoes[d].some((p) => p.colaboradorId === colab.id)) continue;
       const diaSemana = (inicioMes.getDay() + d - 1) % 7;
       const data = new Date(ano, mes - 1, d);
 
@@ -186,9 +222,16 @@ export function gerarEscala(args: {
     const qtdDias = calcularQtdDias(regime, diasDisponiveis, totalDias, rand);
     let diasTrabalho: number[];
     if (regime === "12x36") {
-      diasTrabalho = distribuirAlternado(diasDisponiveis, (inicioMes.getDay()), rand);
+      diasTrabalho = distribuirAlternado(diasDisponiveis, colabIndex % 2);
     } else if (regime === "24/72") {
       diasTrabalho = distribuirComEspacamento(diasDisponiveis, 3, qtdDias, rand);
+    } else if (regime === "5x2") {
+      // 5x2: apenas dias úteis (segunda a sexta)
+      const diasUteis = diasDisponiveis.filter((d) => {
+        const diaSemana = (inicioMes.getDay() + d - 1) % 7;
+        return !ehFimDeSemana(diaSemana as DiaDaSemana);
+      });
+      diasTrabalho = distribuirEquilibrado(diasUteis, qtdDias, rand);
     } else {
       diasTrabalho = distribuirEquilibrado(diasDisponiveis, qtdDias, rand);
     }
@@ -265,7 +308,7 @@ export function validarEscala(args: {
       // 1. Teto de horas por dia (regra 5x2)
       if (regime === "5x2" && horasTrabalhadas > 10) {
         avisos.push({
-          tipo: "sub_cobertura",
+          tipo: "teto_horas",
           dia: d,
           colaboradorId: p.colaboradorId,
           mensagem: `${nome(p.colaboradorId)}: regime 5x2 com ${horasTrabalhadas.toFixed(1)}h no dia ${d} (teto 10h/dia).`,
@@ -300,7 +343,7 @@ export function validarEscala(args: {
         if (intervalo < 0) intervalo += 24 * 60; // turno noturno que termina dia seguinte
         if (intervalo < 11 * 60) {
           avisos.push({
-            tipo: "sub_cobertura",
+            tipo: "intervalo_insuficiente",
             dia: d,
             colaboradorId: p.colaboradorId,
             mensagem: `${nome(p.colaboradorId)}: intervalo de ${Math.round(intervalo / 60)}h entre jornadas nos dias ${d - 1} e ${d} (mínimo legal: 11h).`,
@@ -313,7 +356,7 @@ export function validarEscala(args: {
     const colaboradorIds = new Set(plantoesDia.map((p) => p.colaboradorId));
     if (colaboradorIds.size !== plantoesDia.length) {
       avisos.push({
-        tipo: "sub_cobertura",
+        tipo: "colisao",
         dia: d,
         mensagem: `Dia ${d} tem colisão de colaborador (mesmo ID em múltiplos plantões).`,
       });
@@ -323,8 +366,7 @@ export function validarEscala(args: {
   // 5. Carga horária semanal (>44h para 5x2)
   const horasPorSemana = new Map<string, Map<number, number>>(); // colaboradorId -> (semana -> horas)
   for (let d = 1; d <= totalDias; d++) {
-    const diaSemanaNum = new Date(ano, mes - 1, d).getDay();
-    const semana = Math.ceil(d / 7);
+    const semana = Math.floor((d - 1 + new Date(ano, mes - 1, 1).getDay()) / 7) + 1;
     for (const p of (plantoes[d] ?? [])) {
       if (mapRegime.get(p.colaboradorId) !== "5x2") continue;
       if (!horasPorSemana.has(p.colaboradorId)) horasPorSemana.set(p.colaboradorId, new Map());
@@ -337,7 +379,7 @@ export function validarEscala(args: {
     for (const [semana, horas] of semanas) {
       if (horas > 44) {
         avisos.push({
-          tipo: "sub_cobertura",
+          tipo: "carga_semanal_excessiva",
           colaboradorId: colabId,
           mensagem: `${nome(colabId)}: carga horária de ${horas.toFixed(1)}h na semana ${semana} (limite 44h).`,
         });
@@ -366,7 +408,7 @@ export function validarEscala(args: {
     })();
     if (qtd >= totalDomingos) {
       avisos.push({
-        tipo: "sub_cobertura",
+        tipo: "dsr_violado",
         colaboradorId: colabId,
         mensagem: `${nome(colabId)}: trabalhou todos os ${qtd} domingos do mês — sem DSR obrigatório.`,
       });

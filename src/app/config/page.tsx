@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getLocalUser } from "@/lib/auth";
+import { getLocalUser, signOut } from "@/lib/auth";
 import { getDB } from "@/lib/db";
 import { Settings, Home, User, Database } from "lucide-react";
 
@@ -15,6 +15,7 @@ export default function ConfigPage() {
     async function carregarConfig() {
       const user = await getLocalUser();
       if (!user) {
+        await signOut();
         router.push("/login");
         return;
       }

@@ -45,7 +45,15 @@ export interface EscalaGerada {
 }
 
 export interface Aviso {
-  tipo: "sub_cobertura" | "colaborador_sem_regime" | "dia_descoberto";
+  tipo:
+    | "sub_cobertura"
+    | "colaborador_sem_regime"
+    | "dia_descoberto"
+    | "teto_horas"
+    | "intervalo_insuficiente"
+    | "colisao"
+    | "carga_semanal_excessiva"
+    | "dsr_violado";
   dia?: number;
   colaboradorId?: string;
   mensagem: string;

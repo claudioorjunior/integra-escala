@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getLocalUser } from "@/lib/auth";
+import { getLocalUser, signOut } from "@/lib/auth";
 import { getDB, buscarEscalaDoMes } from "@/lib/db";
 import MonthCard from "@/components/calendar/MonthCard";
 import ScaleEditor from "@/components/calendar/ScaleEditor";
@@ -37,6 +37,7 @@ export default function DashboardPage() {
   async function carregarDados() {
     const user = await getLocalUser();
     if (!user) {
+      await signOut();
       router.push("/login");
       return;
     }
@@ -52,24 +53,23 @@ export default function DashboardPage() {
 
       if (uiRes.rows.length > 0) {
         const ilpiId = uiRes.rows[0].ilpi_id;
-        
-        // Buscar nome da ILPI
-        const ilpiRes = await db.query<{ nome: string }>(
-          `SELECT nome FROM public.ilpis WHERE id = $1;`,
-          [ilpiId]
-        );
-        
-        // Buscar quantidade de colaboradores
-        const colabCountRes = await db.query<{ count: string }>(
-          `SELECT count(*) FROM public.colaboradores WHERE ilpi_id = $1;`,
-          [ilpiId]
-        );
 
-        // Buscar todos os colaboradores para resolver os nomes/cores no frontend
-        const colabsRes = await db.query<any>(
-          `SELECT id, nome FROM public.colaboradores WHERE ilpi_id = $1 ORDER BY nome;`,
-          [ilpiId]
-        );
+        // Buscar nome da ILPI, quantidade de colaboradores e lista de colaboradores em paralelo
+        const [ilpiRes, colabCountRes, colabsRes] = await Promise.all([
+          db.query<{ nome: string }>(
+            `SELECT nome FROM public.ilpis WHERE id = $1;`,
+            [ilpiId]
+          ),
+          db.query<{ count: string }>(
+            `SELECT count(*) FROM public.colaboradores WHERE ilpi_id = $1;`,
+            [ilpiId]
+          ),
+          db.query<any>(
+            `SELECT id, nome FROM public.colaboradores WHERE ilpi_id = $1 ORDER BY nome;`,
+            [ilpiId]
+          ),
+        ]);
+
         const colabMap: Record<string, { nome: string; cor: string }> = {};
         colabsRes.rows.forEach((c: any, index: number) => {
           colabMap[c.id] = {
@@ -98,7 +98,7 @@ export default function DashboardPage() {
               plantoesAgrupados[p.dia].push({
                 nome: cInfo.nome,
                 cargo: "",
-                horario: `${p.horarioInicio}-${p.horarioFim}`,
+                horario: `${(p.horarioInicio ?? "07:00").slice(0, 5)}-${(p.horarioFim ?? "19:00").slice(0, 5)}`,
                 cor: cInfo.cor,
               });
             });
@@ -169,10 +169,6 @@ export default function DashboardPage() {
         <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
           <span className="text-[#8b7d6b]">Colaboradores:</span> {ilpiInfo?.colaboradoresCount ?? 0}
-        </span>
-        <span className="text-[#8b7d6b]">•</span>
-        <span className="text-[#555]">
-          <span className="text-[#8b7d6b]">Convites pendentes:</span> 0
         </span>
       </div>
 
