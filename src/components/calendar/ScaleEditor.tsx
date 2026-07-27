@@ -48,6 +48,7 @@ export default function ScaleEditor({
   const [plantoes, setPlantoes] = useState<Record<number, Record<string, string>>>({});
   const [status, setStatus] = useState<"rascunho" | "publicada">("rascunho");
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
 
   const totalDias = getTotalDias(mes, ano);
   const primeiroDiaSemana = getDiaSemana(1, mes, ano);
@@ -63,10 +64,10 @@ export default function ScaleEditor({
     if (!aberto) return;
 
     async function carregarDados() {
-      setLoading(true);
       const user = await getLocalUser();
       if (!user) return;
 
+      setLoading(true);
       try {
         const db = await getDB();
         
@@ -103,8 +104,10 @@ export default function ScaleEditor({
         const plantoesRecord: Record<number, Record<string, string>> = {};
         for (const p of escala.plantoes) {
           if (!plantoesRecord[p.dia]) plantoesRecord[p.dia] = {};
-          // Mapear o horário vindo do banco
-          plantoesRecord[p.dia][p.colaboradorId] = p.horarioInicio || "07:00-19:00";
+          // Reconstrói o intervalo "HH:MM-HH:MM" a partir das colunas TIME do banco
+          const inicio = (p.horarioInicio ?? "07:00").slice(0, 5);
+          const fim = (p.horarioFim ?? "19:00").slice(0, 5);
+          plantoesRecord[p.dia][p.colaboradorId] = `${inicio}-${fim}`;
         }
         setPlantoes(plantoesRecord);
       } catch (err) {
@@ -119,6 +122,8 @@ export default function ScaleEditor({
 
   // Algoritmo simples de geração automática
   function handleGerarEscala() {
+    const temDados = Object.values(plantoes).some((d) => Object.keys(d).length > 0);
+    if (temDados && !confirm("Gerar a escala substituirá os plantões atuais deste mês. Continuar?")) return;
     const novosPlantoes: Record<number, Record<string, string>> = {};
 
     for (let d = 1; d <= totalDias; d++) {
@@ -158,9 +163,7 @@ export default function ScaleEditor({
   // Alternar turno ao clicar na célula
   function toggleCélula(dia: number, colabId: string, regime: string) {
     setPlantoes((prev) => {
-      const copy = { ...prev };
-      if (!copy[dia]) copy[dia] = {};
-
+      const copy = { ...prev, [dia]: { ...(prev[dia] ?? {}) } };
       const atual = copy[dia][colabId];
       if (!atual) {
         // Define horário padrão baseado no regime
@@ -182,6 +185,7 @@ export default function ScaleEditor({
     if (!user) return;
 
     setLoading(true);
+    setErro(null);
     try {
       const plantoesDB: PlantaoDB[] = [];
       Object.entries(plantoes).forEach(([diaStr, colabs]) => {
@@ -202,6 +206,7 @@ export default function ScaleEditor({
       onFechar();
     } catch (err) {
       console.error("Erro ao salvar escala:", err);
+      setErro("Não foi possível salvar a escala. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -213,6 +218,7 @@ export default function ScaleEditor({
     if (!user) return;
 
     setLoading(true);
+    setErro(null);
     try {
       await excluirEscalaDoMes(user.id, mes, ano);
       setPlantoes({});
@@ -220,6 +226,7 @@ export default function ScaleEditor({
       onFechar();
     } catch (err) {
       console.error("Erro ao descartar escala:", err);
+      setErro("Não foi possível descartar a escala. Tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -341,9 +348,12 @@ export default function ScaleEditor({
                           const isFimDeSemana = getDiaSemana(dia, mes, ano) === 0 || getDiaSemana(dia, mes, ano) === 6;
 
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={`${colab.id}-${dia}`}
                               onClick={() => toggleCélula(dia, colab.id, colab.regime)}
+                              aria-pressed={Boolean(turno)}
+                              aria-label={`${colab.nome} — dia ${dia}${turno ? `, ${turno}` : ", sem plantão"}`}
                               className={`bg-white px-1 py-1 text-[11px] leading-tight min-h-[38px] cursor-pointer transition-colors hover:bg-[#f0ede5] ${
                                 isFimDeSemana ? "bg-[#faf8f4]" : ""
                               }`}
@@ -363,7 +373,7 @@ export default function ScaleEditor({
                                   {turno}
                                 </div>
                               )}
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -393,7 +403,10 @@ export default function ScaleEditor({
               <span>•</span>
               <span>Dias: {totalDias}</span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
+              {erro && (
+                <span className="text-xs text-red-600 font-medium">{erro}</span>
+              )}
               <button
                 onClick={handleDescartar}
                 disabled={loading}

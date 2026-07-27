@@ -11,8 +11,6 @@ import { ptBR } from "@/lib/i18n/pt-BR";
 interface Colaborador {
   id: string;
   nome: string;
-  email: string;
-  telefone: string;
   cargo: string;
   regime: string;
   foto_url: string | null;
@@ -57,8 +55,6 @@ export default function ColaboradoresPage() {
           `SELECT 
             c.id, 
             c.nome, 
-            c.email, 
-            c.telefone, 
             c.regime, 
             c.ativo, 
             c.created_at,
@@ -73,8 +69,6 @@ export default function ColaboradoresPage() {
         const mapped: Colaborador[] = colabsRes.rows.map((row: any) => ({
           id: row.id,
           nome: row.nome,
-          email: row.email || "",
-          telefone: row.telefone || "",
           cargo: row.cargo || "Sem cargo",
           regime: row.regime || "Não definido",
           foto_url: null,
@@ -104,8 +98,7 @@ export default function ColaboradoresPage() {
   const cargos = ["todos", ...new Set(colaboradores.map((c) => c.cargo))];
 
   const colaboradoresFiltrados = colaboradores.filter((c) => {
-    const matchBusca = c.nome.toLowerCase().includes(busca.toLowerCase()) ||
-      c.email.toLowerCase().includes(busca.toLowerCase());
+    const matchBusca = c.nome.toLowerCase().includes(busca.toLowerCase());
     const matchCargo = filtroCargo === "todos" || c.cargo === filtroCargo;
     return matchBusca && matchCargo;
   });
@@ -142,7 +135,7 @@ export default function ColaboradoresPage() {
           <Search size={16} strokeWidth={2} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8b7d6b]" />
           <input
             type="text"
-            placeholder="Buscar por nome ou email..."
+            placeholder="Buscar por nome..."
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-[#d4cdc0] rounded-lg text-sm focus:outline-none focus:border-[#1a3c34] transition"

@@ -67,7 +67,7 @@ export default function DashboardPage() {
 
         // Buscar todos os colaboradores para resolver os nomes/cores no frontend
         const colabsRes = await db.query<any>(
-          `SELECT id, nome FROM public.colaboradores WHERE ilpi_id = $1;`,
+          `SELECT id, nome FROM public.colaboradores WHERE ilpi_id = $1 ORDER BY nome;`,
           [ilpiId]
         );
         const colabMap: Record<string, { nome: string; cor: string }> = {};

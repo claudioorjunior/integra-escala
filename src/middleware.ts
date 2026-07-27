@@ -29,10 +29,13 @@ export async function middleware(request: NextRequest) {
   const loggedInCookie = request.cookies.get("integra_escala_logged_in");
   const isLoggedIn = loggedInCookie?.value === "true";
 
+  // O cookie é apenas um hint de UX para redirecionamento — NÃO é autenticação real.
+  // Qualquer script no origin pode forgá-lo (sem HttpOnly). O gate real de autenticação
+  // é getLocalUser() em cada página, que valida contra o IndexedDB do próprio usuário.
   if (isProtected(pathname) && !isLoggedIn) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", pathname);
+    loginUrl.searchParams.set("next", pathname + request.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

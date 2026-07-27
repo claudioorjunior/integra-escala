@@ -5,8 +5,6 @@ import { User, Mail, Phone, Briefcase, Clock, Calendar, X, Pencil, FileText } fr
 interface Colaborador {
   id: string;
   nome: string;
-  email: string;
-  telefone: string;
   cargo: string;
   regime: string;
   foto_url: string | null;
@@ -87,31 +85,6 @@ export default function ColaboradorModal({
           {/* Info grid */}
           <div className="grid grid-cols-1 gap-3">
             {/* Email */}
-            <div className="flex items-center gap-4 p-4 bg-[#faf8f4] rounded-xl border border-[#e8e2d4] hover:border-[#1a3c34]/30 transition">
-              <div className="w-11 h-11 rounded-xl bg-[#1a3c34]/10 flex items-center justify-center shrink-0">
-                <Mail size={18} strokeWidth={2} className="text-[#1a3c34]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-[#8b7d6b] uppercase tracking-wider font-medium">Email</p>
-                <p className="text-sm text-[#333] font-medium mt-0.5 truncate">
-                  {colaborador.email}
-                </p>
-              </div>
-            </div>
-
-            {/* Telefone */}
-            <div className="flex items-center gap-4 p-4 bg-[#faf8f4] rounded-xl border border-[#e8e2d4] hover:border-[#1a3c34]/30 transition">
-              <div className="w-11 h-11 rounded-xl bg-[#1a3c34]/10 flex items-center justify-center shrink-0">
-                <Phone size={18} strokeWidth={2} className="text-[#1a3c34]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-[#8b7d6b] uppercase tracking-wider font-medium">Telefone</p>
-                <p className="text-sm text-[#333] font-medium mt-0.5">
-                  {colaborador.telefone}
-                </p>
-              </div>
-            </div>
-
             {/* Regime */}
             <div className="flex items-center gap-4 p-4 bg-[#faf8f4] rounded-xl border border-[#e8e2d4] hover:border-[#1a3c34]/30 transition">
               <div className="w-11 h-11 rounded-xl bg-[#1a3c34]/10 flex items-center justify-center shrink-0">

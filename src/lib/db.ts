@@ -1,20 +1,33 @@
 import { PGlite } from "@electric-sql/pglite";
 import { MIGRATIONS } from "./migrations";
 
+// Helper reutilizável: pega o ilpi_id do usuário logado a partir do db
+export async function getIlpiIdDoUsuario(db: PGlite, userId: string): Promise<string | null> {
+  const res = await db.query<{ ilpi_id: string }>(
+    `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+    [userId]
+  );
+  return res.rows.length > 0 ? res.rows[0].ilpi_id : null;
+}
+
 // Ponytail: Usamos IndexedDB no browser e banco em memória no server
 // Upgrade path: Persistir em SQLite no backend se formos usar server-side actions
-let dbInstance: PGlite | null = null;
+let dbPromise: Promise<PGlite> | null = null;
 
 export async function getDB(): Promise<PGlite> {
-  if (dbInstance) return dbInstance;
+  if (dbPromise) return dbPromise;
+  dbPromise = initDB();
+  return dbPromise;
+}
 
+async function initDB(): Promise<PGlite> {
   const isBrowser = typeof window !== "undefined";
   const db = new PGlite(isBrowser ? "idb://integra-escala-db" : undefined);
-  
+
   // 1. Criar estrutura básica do Supabase Auth para evitar erros nas migrations
   await db.exec(`
     CREATE SCHEMA IF NOT EXISTS auth;
-    
+
     CREATE TABLE IF NOT EXISTS auth.users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         email TEXT UNIQUE NOT NULL,
@@ -39,39 +52,44 @@ export async function getDB(): Promise<PGlite> {
 
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS UUID AS $$
       SELECT COALESCE(
-        current_setting('request.jwt.claim.sub', true),
+        NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid,
         '00000000-0000-0000-0000-000000000000'
       )::uuid;
     $$ LANGUAGE sql STABLE;
 
-    -- Mock do digest de pgcrypto para rodar offline sem precisar de pgcrypto no PGlite
-    CREATE OR REPLACE FUNCTION public.digest(data text, type text) RETURNS bytea AS $$
-      SELECT data::bytea;
-    $$ LANGUAGE sql IMMUTABLE;
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
   `);
 
-  // 2. Executar migrations se necessário (indempotentes)
+  // 2. Executar migrations se necessário (idempotentes, com controle de ordem)
+  const mRes = await db.query<{ name: string }>(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY);`
+  );
+  await mRes;
+
   for (const migration of MIGRATIONS) {
+    const recorded = await db.query<{ name: string }>(
+      `SELECT name FROM schema_migrations WHERE name = $1;`,
+      [migration.name]
+    );
+    if (recorded.rows.length > 0) continue;
+
     try {
-      // Ponytail: Evita falhas no PGlite com extensões não compiladas/disponíveis no WASM
-      const cleanSql = migration.sql.replace(/CREATE EXTENSION IF NOT EXISTS pgcrypto;/gi, "");
-      await db.exec(cleanSql);
+      await db.exec(migration.sql);
+      await db.exec(
+        `INSERT INTO schema_migrations (name) VALUES (${migration.name});`
+      );
     } catch (err) {
       console.error(`Erro ao rodar migration ${migration.name}:`, err);
+      throw new Error(`Falha na migration ${migration.name}`, { cause: err });
     }
   }
 
-  dbInstance = db;
   return db;
 }
 
 // Helper para definir o usuário atual na sessão do PGlite
 export async function setSessionUser(db: PGlite, userId: string | null) {
-  if (userId) {
-    await db.exec(`SELECT set_config('request.jwt.claim.sub', '${userId}', false);`);
-  } else {
-    await db.exec(`SELECT set_config('request.jwt.claim.sub', '', false);`);
-  }
+  await db.query(`SELECT set_config('request.jwt.claim.sub', $1, false);`, [userId ?? ""]);
 }
 
 export interface PlantaoDB {
@@ -83,13 +101,15 @@ export interface PlantaoDB {
 
 export async function buscarEscalaDoMes(userId: string, mes: number, ano: number) {
   const db = await getDB();
-  
+
   // 1. Pegar ILPI do usuário
   const uiRes = await db.query<{ ilpi_id: string }>(
     `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
     [userId]
   );
-  if (uiRes.rows.length === 0) return { escalaMesId: null, plantoes: [] };
+  if (uiRes.rows.length === 0) {
+    return { escalaMesId: null, status: "rascunho", plantoes: [] as PlantaoDB[] };
+  }
   const ilpiId = uiRes.rows[0].ilpi_id;
 
   // 2. Buscar escala_meses correspondente
@@ -99,7 +119,7 @@ export async function buscarEscalaDoMes(userId: string, mes: number, ano: number
   );
 
   if (escalaMesRes.rows.length === 0) {
-    return { escalaMesId: null, status: "rascunho", plantoes: [] };
+    return { escalaMesId: null, status: "rascunho", plantoes: [] as PlantaoDB[] };
   }
 
   const escalaMesId = escalaMesRes.rows[0].id;
@@ -130,7 +150,7 @@ export async function salvarEscalaDoMes(
   status: "rascunho" | "publicada" = "rascunho"
 ) {
   const db = await getDB();
-  
+
   // 1. Pegar ILPI
   const uiRes = await db.query<{ ilpi_id: string }>(
     `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
@@ -139,29 +159,31 @@ export async function salvarEscalaDoMes(
   if (uiRes.rows.length === 0) throw new Error("Usuário não está vinculado a nenhuma ILPI.");
   const ilpiId = uiRes.rows[0].ilpi_id;
 
-  // 2. Upsert escala_meses
-  const escalaMesRes = await db.query<{ id: string }>(
-    `INSERT INTO public.escala_meses (ilpi_id, mes, ano, status)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (ilpi_id, mes, ano) DO UPDATE SET status = EXCLUDED.status
-     RETURNING id;`,
-    [ilpiId, mes, ano, status]
-  );
-  const escalaMesId = escalaMesRes.rows[0].id;
-
-  // 3. Deletar escala_dias antigos para re-inserir todos
-  await db.query(`DELETE FROM public.escala_dias WHERE escala_mes_id = $1;`, [escalaMesId]);
-
-  // 4. Inserir escala_dias em lote
-  for (const p of plantoes) {
-    await db.query(
-      `INSERT INTO public.escala_dias (escala_mes_id, colaborador_id, dia, horario_inicio, horario_fim)
-       VALUES ($1, $2, $3, $4, $5);`,
-      [escalaMesId, p.colaboradorId, p.dia, p.horarioInicio, p.horarioFim]
+  return db.transaction(async (tx) => {
+    // 2. Upsert escala_meses
+    const escalaMesRes = await tx.query<{ id: string }>(
+      `INSERT INTO public.escala_meses (ilpi_id, mes, ano, status)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (ilpi_id, mes, ano) DO UPDATE SET status = EXCLUDED.status
+       RETURNING id;`,
+      [ilpiId, mes, ano, status]
     );
-  }
+    const escalaMesId = escalaMesRes.rows[0].id;
 
-  return escalaMesId;
+    // 3. Deletar escala_dias antigos para re-inserir todos
+    await tx.query(`DELETE FROM public.escala_dias WHERE escala_mes_id = $1;`, [escalaMesId]);
+
+    // 4. Inserir escala_dias em lote
+    for (const p of plantoes) {
+      await tx.query(
+        `INSERT INTO public.escala_dias (escala_mes_id, colaborador_id, dia, horario_inicio, horario_fim)
+         VALUES ($1, $2, $3, $4, $5);`,
+        [escalaMesId, p.colaboradorId, p.dia, p.horarioInicio, p.horarioFim]
+      );
+    }
+
+    return escalaMesId;
+  });
 }
 
 export async function excluirEscalaDoMes(userId: string, mes: number, ano: number) {
@@ -179,4 +201,3 @@ export async function excluirEscalaDoMes(userId: string, mes: number, ano: numbe
     ano,
   ]);
 }
-

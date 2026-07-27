@@ -25,10 +25,10 @@ export default function CadastroPage() {
       router.push("/dashboard");
       router.refresh();
     } catch (err: any) {
-      if (err.message && err.message.includes("unique constraint")) {
+      if (err?.code === "23505" && String(err?.constraint ?? "").includes("email")) {
         setError("Este email já está cadastrado.");
       } else {
-        setError(err.message || "Erro ao criar conta. Tente novamente.");
+        setError("Erro ao criar conta. Tente novamente.");
       }
       setLoading(false);
     }

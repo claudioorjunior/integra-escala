@@ -31,9 +31,14 @@ export default function DashboardLayout({
   const [menuOpen, setMenuOpen] = useState(false);
 
   async function handleLogout() {
-    await signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("Falha ao encerrar sessão local", err);
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
   }
 
   return (
