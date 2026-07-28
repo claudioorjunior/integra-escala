@@ -110,6 +110,12 @@ function LoginForm() {
               Cadastre-se
             </a>
           </p>
+
+          <p className="text-center text-sm text-[#1a3c34] mt-3">
+            <a href="/dev-login" className="font-medium hover:underline">
+              Entrar como dev (bypass)
+            </a>
+          </p>
         </div>
       </div>
     </div>

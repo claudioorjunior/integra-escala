@@ -25,9 +25,20 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/_next")) return NextResponse.next();
   if (pathname.startsWith("/api/auth")) return NextResponse.next();
 
+  const isDev = process.env.NODE_ENV === "development";
+
   // Ponytail: Autenticação baseada em cookie local e offline-friendly
   const loggedInCookie = request.cookies.get("integra_escala_logged_in");
   const isLoggedIn = loggedInCookie?.value === "true";
+
+  if (isDev) {
+    if (isAuthRoute(pathname) && isLoggedIn) {
+      const dashUrl = request.nextUrl.clone();
+      dashUrl.pathname = "/dashboard";
+      return NextResponse.redirect(dashUrl);
+    }
+    return NextResponse.next();
+  }
 
   // O cookie é apenas um hint de UX para redirecionamento — NÃO é autenticação real.
   // Qualquer script no origin pode forgá-lo (sem HttpOnly). O gate real de autenticação
