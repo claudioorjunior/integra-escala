@@ -79,6 +79,34 @@ The app bootstraps its first user on signup via `handle_new_user()` trigger in m
 
 ---
 
+## Project structure
+
+```text
+integra-escala/
+├── src/
+│   ├── app/                 # Next.js App Router
+│   │   ├── cadastro/        # User registration
+│   │   ├── cargos/          # Role management
+│   │   ├── colaboradores/   # Collaborator management
+│   │   ├── config/          # ILPI configuration
+│   │   ├── dashboard/       # Main scale dashboard
+│   │   └── login/           # Authentication
+│   ├── components/
+│   │   ├── calendar/        # MonthCard, ScaleEditor
+│   │   └── colaboradores/   # ColaboradorModal
+│   └── lib/
+│       ├── auth.ts          # Web Crypto-based auth
+│       ├── db.ts            # PGlite client + queries
+│       ├── migrations.ts    # Database migrations
+│       ├── schemas/         # Zod validation schemas
+│       └── i18n/            # Internationalization (pt-BR)
+├── docs/
+│   └── migrations/          # SQL reference files
+└── public/                  # Static assets
+```
+
+---
+
 ## How to open a PR
 
 1. **Pick an issue** — look for [good first issue](https://github.com/claudioorjunior/integra-escala/labels/good%20first%20issue) labels, or open a new one to discuss your idea first.
