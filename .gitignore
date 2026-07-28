@@ -40,7 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local tooling state (PGlite, worktrees, logs)
+# local tooling state (PGlite, freebuff, worktrees, logs)
+*.db
 *.db-shm
 *.db-wal
+.freebuff/
 .freebuff/worktrees/
