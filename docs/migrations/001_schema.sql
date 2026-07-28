@@ -4,26 +4,11 @@
 -- Descrição: Cria schema completo multi-ILPI com RLS para o sistema Integra Escala
 -- =============================================================================
 
--- Limpeza prévia (idempotente)
--- Ordem importa: primeiro trigger/tabelas (que carregam policies), depois funções auxiliares
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP TABLE IF EXISTS public.escala_dias CASCADE;
-DROP TABLE IF EXISTS public.escala_meses CASCADE;
-DROP TABLE IF EXISTS public.colaboradores CASCADE;
-DROP TABLE IF EXISTS public.cargos CASCADE;
-DROP TABLE IF EXISTS public.usuario_ilpi CASCADE;
-DROP TABLE IF EXISTS public.usuarios CASCADE;
-DROP TABLE IF EXISTS public.ilpis CASCADE;
-DROP FUNCTION IF EXISTS public.handle_new_user();
-DROP FUNCTION IF EXISTS public.handle_invite_user(UUID, TEXT, TEXT);
-DROP FUNCTION IF EXISTS public.get_user_ilpis(UUID);
-DROP FUNCTION IF EXISTS public.user_has_ilpi_access(UUID, UUID);
-DROP FUNCTION IF EXISTS public.user_ilpi_role(UUID, UUID);
 
 -- =============================================================================
 -- 1. TABELA: ilpis
 -- =============================================================================
-CREATE TABLE public.ilpis (
+CREATE TABLE IF NOT EXISTS public.ilpis (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nome        TEXT NOT NULL,
     slug        TEXT UNIQUE NOT NULL,
@@ -38,7 +23,7 @@ COMMENT ON TABLE public.ilpis IS 'Instituições de Longa Permanência — tenan
 -- =============================================================================
 -- 2. TABELA: cargos
 -- =============================================================================
-CREATE TABLE public.cargos (
+CREATE TABLE IF NOT EXISTS public.cargos (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ilpi_id     UUID NOT NULL REFERENCES public.ilpis(id) ON DELETE CASCADE,
     nome        TEXT NOT NULL,
@@ -54,7 +39,7 @@ COMMENT ON TABLE public.cargos IS 'Cargos com regimes de trabalho por ILPI';
 -- =============================================================================
 -- 3. TABELA: colaboradores
 -- =============================================================================
-CREATE TABLE public.colaboradores (
+CREATE TABLE IF NOT EXISTS public.colaboradores (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ilpi_id         UUID NOT NULL REFERENCES public.ilpis(id) ON DELETE CASCADE,
     cargo_id        UUID REFERENCES public.cargos(id) ON DELETE SET NULL,
@@ -75,7 +60,7 @@ COMMENT ON TABLE public.colaboradores IS 'Colaboradores de cada ILPI — regime 
 -- =============================================================================
 -- 4. TABELA: escala_meses
 -- =============================================================================
-CREATE TABLE public.escala_meses (
+CREATE TABLE IF NOT EXISTS public.escala_meses (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ilpi_id     UUID NOT NULL REFERENCES public.ilpis(id) ON DELETE CASCADE,
     mes         INTEGER NOT NULL CHECK (mes BETWEEN 1 AND 12),
@@ -92,7 +77,7 @@ COMMENT ON TABLE public.escala_meses IS 'Meses de escala — cada ILPI pode ter 
 -- =============================================================================
 -- 5. TABELA: escala_dias
 -- =============================================================================
-CREATE TABLE public.escala_dias (
+CREATE TABLE IF NOT EXISTS public.escala_dias (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     escala_mes_id   UUID NOT NULL REFERENCES public.escala_meses(id) ON DELETE CASCADE,
     colaborador_id  UUID NOT NULL REFERENCES public.colaboradores(id) ON DELETE CASCADE,
@@ -111,7 +96,7 @@ COMMENT ON TABLE public.escala_dias IS 'Dias individuais da escala — registro 
 -- =============================================================================
 -- 6. TABELA: usuarios
 -- =============================================================================
-CREATE TABLE public.usuarios (
+CREATE TABLE IF NOT EXISTS public.usuarios (
     id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     nome        TEXT NOT NULL,
     created_at  TIMESTAMPTZ DEFAULT now()
@@ -122,7 +107,7 @@ COMMENT ON TABLE public.usuarios IS 'Perfil de usuário estendido — referênci
 -- =============================================================================
 -- 7. TABELA: usuario_ilpi
 -- =============================================================================
-CREATE TABLE public.usuario_ilpi (
+CREATE TABLE IF NOT EXISTS public.usuario_ilpi (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     usuario_id  UUID NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
     ilpi_id     UUID NOT NULL REFERENCES public.ilpis(id) ON DELETE CASCADE,
@@ -261,10 +246,20 @@ $$;
 COMMENT ON FUNCTION public.handle_new_user IS 'Trigger: cria perfil em public.usuarios quando novo usuário faz signup no Auth';
 
 -- Trigger: insere na tabela de perfil automaticamente
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION public.handle_new_user();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'on_auth_user_created'
+        AND tgrelid = 'auth.users'::regclass
+    ) THEN
+        CREATE TRIGGER on_auth_user_created
+            AFTER INSERT ON auth.users
+            FOR EACH ROW
+            EXECUTE FUNCTION public.handle_new_user();
+    END IF;
+END
+$$;
 
 -- =============================================================================
 -- 9. ROW LEVEL SECURITY (RLS)

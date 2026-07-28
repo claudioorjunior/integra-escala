@@ -21,7 +21,13 @@ function LoginForm() {
     try {
       await signIn(email, password);
       const next = searchParams.get("next");
-      const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+      const target =
+        next &&
+        next.startsWith("/") &&
+        !next.startsWith("//") &&
+        !next.includes("\\")
+          ? next
+          : "/dashboard";
       router.push(target);
       router.refresh();
     } catch (err: any) {

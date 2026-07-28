@@ -192,7 +192,9 @@ COMMENT ON TABLE public.audit_log IS 'Registro de auditoria LGPD — apenas admi
 -- =============================================================================
 -- 5. Função auxiliar: hash_email para LGPD no audit log
 -- =============================================================================
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Nota: PGlite não suporta a extensão pgcrypto. As funções digest()/encode()
+-- são usadas apenas dentro de corpos de função (não executadas no migrate).
+-- Em produção (Supabase), a extensão já está disponível por padrão.
 
 -- =============================================================================
 -- Fim da migration 002

@@ -9,5 +9,8 @@ export const ptBR = {
     cargos: {
       noRolesFound: "Nenhum cargo cadastrado ainda",
     },
+    monthCard: {
+      noScheduleGenerated: "Nenhuma escala gerada para este mês",
+    },
   },
 } as const;

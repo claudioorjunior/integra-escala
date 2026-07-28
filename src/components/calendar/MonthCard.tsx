@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Pencil, Sparkles, X } from "lucide-react";
+import { ptBR } from "@/lib/i18n/pt-BR";
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MESES = [
@@ -30,43 +31,7 @@ interface MonthCardProps {
   compacto?: boolean;
 }
 
-// Mock data para demonstração - colaboradores fixos
-const COLABORADORES_FIXOS = [
-  { nome: "Fátima Silva", cor: "#1a3c34" },
-  { nome: "Maria Souza", cor: "#c4b998" },
-  { nome: "João Costa", cor: "#8b5e3c" },
-  { nome: "Carlos Pereira", cor: "#5a7a6a" },
-  { nome: "Ana Oliveira", cor: "#a0522d" },
-  { nome: "José Santos", cor: "#6b8e7a" },
-  { nome: "Rita Lima", cor: "#8b7355" },
-  { nome: "Lúcia Mendes", cor: "#556b5a" },
-];
 
-function gerarMockDiasComNomes(mes: number, ano: number): DiaEscala[] {
-  const totalDias = new Date(ano, mes, 0).getDate();
-  const dias: DiaEscala[] = [];
-  const horarios = ["24h", "07h-19h", "19h-07h", "07h-17h", "13h-21h"];
-
-  for (let d = 1; d <= totalDias; d++) {
-    if (Math.random() > 0.25) {
-      const qtd = 1 + Math.floor(Math.random() * 3);
-      const selecionados = COLABORADORES_FIXOS
-        .sort(() => Math.random() - 0.5)
-        .slice(0, Math.min(qtd, COLABORADORES_FIXOS.length));
-      
-      dias.push({
-        dia: d,
-        plantoes: selecionados.map((c) => ({
-          nome: c.nome.split(" ")[0], // Primeiro nome apenas no compacto
-          cargo: "",
-          horario: horarios[Math.floor(Math.random() * horarios.length)],
-          cor: c.cor,
-        })),
-      });
-    }
-  }
-  return dias;
-}
 
 function getDiaSemana(dia: number, mes: number, ano: number) {
   return new Date(ano, mes - 1, dia).getDay();
@@ -84,20 +49,20 @@ export default function MonthCard({
   onGerar,
   compacto = false,
 }: MonthCardProps) {
-  const dias = diasProp ?? gerarMockDiasComNomes(mes, ano);
+  const dias = diasProp;
   const totalDias = getTotalDias(mes, ano);
   const primeiroDiaSemana = getDiaSemana(1, mes, ano);
 
   const diasMap = useMemo(() => {
     const map = new Map<number, Plantao[]>();
-    dias.forEach((d) => map.set(d.dia, d.plantoes));
+    (dias ?? []).forEach((d) => map.set(d.dia, d.plantoes));
     return map;
   }, [dias]);
 
   // Contar colaboradores únicos neste mês
   const colaboradoresNoMes = useMemo(() => {
     const nomes = new Set<string>();
-    dias.forEach((d) => d.plantoes.forEach((p) => nomes.add(p.nome)));
+    (dias ?? []).forEach((d) => d.plantoes.forEach((p) => nomes.add(p.nome)));
     return nomes.size;
   }, [dias]);
 
@@ -147,23 +112,16 @@ export default function MonthCard({
         </div>
       </div>
 
-      {/* Lista de colaboradores (mostra nomes) */}
+      {/* Informações do mês */}
       <div className="px-5 py-3 border-b border-[#e8e2d4] bg-[#faf8f4]">
-        <div className="flex flex-wrap gap-4">
-          {COLABORADORES_FIXOS.slice(0, 6).map((c, i) => (
-            <div key={i} className="flex items-center gap-2 text-sm">
-              <span
-                className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: c.cor }}
-              />
-              <span className="text-[#555]">{c.nome}</span>
-            </div>
-          ))}
-          {COLABORADORES_FIXOS.length > 6 && (
-            <span className="text-sm text-[#8b7d6b]">
-              +{COLABORADORES_FIXOS.length - 6} mais
-            </span>
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-[#8b7d6b]">
+          {dias && dias.length > 0 ? (
+            <span>{colaboradoresNoMes} colaboradores escalados neste mês</span>
+          ) : (
+            <span>{ptBR.emptyStates.monthCard.noScheduleGenerated}</span>
           )}
+          <span>•</span>
+          <span>{totalDias} dias</span>
         </div>
       </div>
 

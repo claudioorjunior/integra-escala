@@ -1,6 +1,6 @@
 import { getDB, setSessionUser } from "./db";
 
-const PBKDF2_ITERATIONS = 210_000;
+const PBKDF2_ITERATIONS = 600_000;
 
 function toHex(buf: ArrayBuffer): string {
   return Array.from(new Uint8Array(buf))
@@ -41,6 +41,20 @@ export interface LocalUser {
 }
 
 const SESSION_KEY = "integra_escala_user_session";
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+
+function isValidUUID(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+function validateLocalUser(obj: unknown): LocalUser | null {
+  if (!obj || typeof obj !== "object") return null;
+  const u = obj as Record<string, unknown>;
+  if (typeof u.id !== "string" || !isValidUUID(u.id)) return null;
+  if (typeof u.email !== "string" || u.email.length === 0) return null;
+  if (typeof u.nome !== "string" || u.nome.length === 0) return null;
+  return { id: u.id, email: u.email, nome: u.nome };
+}
 
 export async function signUp(
   email: string,
@@ -129,30 +143,23 @@ export async function signIn(email: string, password: string): Promise<LocalUser
 
   const userRow = result.rows[0];
 
-  if (userRow.password_hash.startsWith("pbkdf2$")) {
-    const { iterations, salt, hash } = parsePwHash(userRow.password_hash);
-    const key = await crypto.subtle.importKey(
-      "raw",
-      new TextEncoder().encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
-    );
-    const bits = await crypto.subtle.deriveBits(
-      { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
-      key,
-      256
-    );
-    if (toHex(bits) !== hash) throw new Error("Credenciais inválidas");
-  } else {
-    const hashBuffer = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(password)
-    );
-    if (toHex(hashBuffer) !== userRow.password_hash) {
-      throw new Error("Credenciais inválidas");
-    }
+  if (!userRow.password_hash.startsWith("pbkdf2$")) {
+    throw new Error("Credenciais inválidas");
   }
+  const { iterations, salt, hash } = parsePwHash(userRow.password_hash);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    key,
+    256
+  );
+  if (toHex(bits) !== hash) throw new Error("Credenciais inválidas");
 
   const meta = userRow.raw_user_meta_data as { nome?: string; name?: string } || {};
   const nome = meta.nome || meta.name || cleanEmail.split("@")[0];
@@ -163,7 +170,7 @@ export async function signIn(email: string, password: string): Promise<LocalUser
     nome,
   };
 
-  localStorage.setItem(SESSION_KEY, JSON.stringify(userSession));
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ ...userSession, expiresAt: Date.now() + SESSION_TTL_MS }));
   if (typeof document !== "undefined") {
     // Cookie é apenas hint de UX/routing — NÃO é autenticação real.
     // O gate real é getLocalUser() em cada página.
@@ -180,8 +187,33 @@ export async function getLocalUser(): Promise<LocalUser | null> {
   if (!sessionStr) return null;
 
   try {
-    const user = JSON.parse(sessionStr) as LocalUser;
+    const parsed = JSON.parse(sessionStr) as Record<string, unknown>;
+
+    // Validate shape
+    const user = validateLocalUser(parsed);
+    if (!user) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+
+    // Check expiry
+    const expiresAt = parsed.expiresAt;
+    if (typeof expiresAt !== "number" || Date.now() > expiresAt) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+
+    // Verify user still exists in auth.users
     const db = await getDB();
+    const res = await db.query<{ id: string }>(
+      `SELECT id FROM auth.users WHERE id = $1;`,
+      [user.id]
+    );
+    if (res.rows.length === 0) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+
     await setSessionUser(db, user.id);
     return user;
   } catch {
