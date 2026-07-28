@@ -1,0 +1,39 @@
+name: OpenCode PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - run: |
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+          echo "PR Branch: ${{ github.event.pull_request.head.ref }}"
+          echo "Base Branch: ${{ github.event.pull_request.base.ref }}"
+
+      - uses: anomalyco/opencode/github@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode/deepseek-v4-flash-free
+          prompt: |
+            Review this pull request for the Integra Senior project (Next.js + PGlite scheduling app for eldercare facilities):
+
+            1. Security: SQL injection, XSS, auth bypass, hardcoded secrets
+            2. Correctness: logic bugs, edge cases, state management issues
+            3. Code quality: TypeScript types, naming, dead code, console.log left in production
+            4. Tests: test coverage for new code, verify test command includes new test files
+
+            Report issues by severity (critical/warning/info). Be concise. Skip code style preferences.
