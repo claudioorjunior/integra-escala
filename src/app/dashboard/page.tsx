@@ -83,12 +83,16 @@ export default function DashboardPage() {
           colaboradoresCount: parseInt(colabCountRes.rows[0]?.count || "0", 10),
         });
 
-        // Buscar escalas de todos os meses exibidos
+        // Buscar escalas de todos os meses exibidos em paralelo
+        const resultadosMeses = await Promise.all(
+          meses.map(async (m) => ({
+            chave: `${m.mes}-${m.ano}`,
+            escala: await buscarEscalaDoMes(user.id, m.mes, m.ano),
+          }))
+        );
+
         const novasEscalas: Record<string, any[]> = {};
-        for (const m of meses) {
-          const chave = `${m.mes}-${m.ano}`;
-          const escala = await buscarEscalaDoMes(user.id, m.mes, m.ano);
-          
+        for (const { chave, escala } of resultadosMeses) {
           if (escala.plantoes.length > 0) {
             // Agrupar por dia
             const plantoesAgrupados: Record<number, any[]> = {};
@@ -107,7 +111,7 @@ export default function DashboardPage() {
               dia: parseInt(diaStr, 10),
               plantoes: plantoesList,
             }));
-            
+
             novasEscalas[chave] = diasEscala;
           } else {
             novasEscalas[chave] = [];
@@ -158,11 +162,6 @@ export default function DashboardPage() {
 
       {/* Status / info bar */}
       <div className="bg-white rounded-xl border border-[#e8e2d4] px-5 py-3 mb-6 flex items-center flex-wrap gap-x-6 gap-y-2 text-sm">
-        <span className="flex items-center gap-2 text-[#555]">
-          <span className="w-2 h-2 rounded-full bg-green-500" />
-          <span className="text-[#8b7d6b]">Status:</span> Todas as escalas em dia
-        </span>
-        <span className="text-[#8b7d6b]">•</span>
         <span className="text-[#555]">
           <span className="text-[#8b7d6b]">ILPI:</span> {ilpiInfo?.nome || "Carregando..."}
         </span>

@@ -4,8 +4,6 @@ import { getDB, closeDB } from "../db";
 import { signUp, signIn, getLocalUser } from "../auth";
 import { buscarEscalaDoMes, salvarEscalaDoMes, excluirEscalaDoMes, atualizarCargo, excluirCargo, criarCargo } from "../db";
 
-// Ponytail: Simulamos o localStorage sem simular o window/document completo
-// Isso evita que o PGlite se confunda achando que está no browser
 const mockLocalStorage: Record<string, string> = {};
 globalThis.localStorage = {
   getItem: (key: string) => mockLocalStorage[key] || null,
@@ -16,60 +14,83 @@ globalThis.localStorage = {
   key: () => null,
 };
 
-// Fechar o PGlite e limpar o localStorage entre testes para isolamento
 afterEach(async () => {
   await closeDB();
   globalThis.localStorage.clear();
 });
 
-test("PGlite + Auth Local Flow", async () => {
-  const db = await getDB();
+test("PGlite + Auth Local Flow", async (t) => {
+  await t.test("cadastrar usuário cria ILPI padrão e colaboradores seed", async () => {
+    const db = await getDB();
+    const user = await signUp("teste@norteza.com", "senha123", "Claudio Teste");
+    assert.ok(user.id);
+    assert.equal(user.email, "teste@norteza.com");
+    assert.equal(user.nome, "Claudio Teste");
 
-  // 1. Cadastrar usuário
-  const user = await signUp("teste@norteza.com", "senha123", "Claudio Teste");
-  assert.ok(user.id);
-  assert.equal(user.email, "teste@norteza.com");
-  assert.equal(user.nome, "Claudio Teste");
+    const ilpiRes = await db.query<{ nome: string }>("SELECT nome FROM public.ilpis;");
+    assert.equal(ilpiRes.rows.length, 1);
+    assert.equal(ilpiRes.rows[0].nome, "Residencial Norteza");
 
-  // 2. Verificar se a ILPI padrão foi criada
-  const ilpiRes = await db.query<{ nome: string }>("SELECT nome FROM public.ilpis;");
-  assert.equal(ilpiRes.rows.length, 1);
-  assert.equal(ilpiRes.rows[0].nome, "Residencial Norteza");
+    const colabsRes = await db.query<{ id: string }>("SELECT id FROM public.colaboradores;");
+    assert.equal(colabsRes.rows.length, 8);
+  });
 
-  // 3. Fazer Login
-  const session = await signIn("teste@norteza.com", "senha123");
-  assert.equal(session.id, user.id);
+  await t.test("login com credenciais válidas retorna sessão", async () => {
+    const user = await signUp("login@norteza.com", "senha123", "Login Test");
+    const session = await signIn("login@norteza.com", "senha123");
+    assert.equal(session.id, user.id);
+    assert.equal(session.nome, "Login Test");
+  });
 
-  // 4. Buscar colaboradores criados no seed
-  const colabsRes = await db.query<{ id: string }>("SELECT id FROM public.colaboradores;");
-  assert.equal(colabsRes.rows.length, 8);
-  const colabId = colabsRes.rows[0].id;
+  await t.test("login com credenciais inválidas lança erro", async () => {
+    await signUp("badlogin@norteza.com", "senha123", "Bad Login");
+    await assert.rejects(
+      signIn("badlogin@norteza.com", "senha_errada"),
+      /Credenciais inválidas/
+    );
+  });
 
-  // 5. Salvar uma escala para o mês 7 de 2026
-  const plantoesMock = [
-    { colaboradorId: colabId, dia: 15, horarioInicio: "07:00", horarioFim: "19:00" },
-    { colaboradorId: colabId, dia: 16, horarioInicio: "19:00", horarioFim: "07:00" },
-  ];
-  await salvarEscalaDoMes(user.id, 7, 2026, plantoesMock, "rascunho");
+  await t.test("login com email inexistente lança erro", async () => {
+    await assert.rejects(
+      signIn("naoexiste@norteza.com", "qualquer"),
+      /Credenciais inválidas/
+    );
+  });
 
-  // 6. Buscar a escala salva e validar os registros
-  const escala = await buscarEscalaDoMes(user.id, 7, 2026);
-  assert.ok(escala.escalaMesId);
-  assert.equal(escala.status, "rascunho");
-  assert.equal(escala.plantoes.length, 2);
-  assert.equal(escala.plantoes[0].dia, 15);
-  assert.equal(escala.plantoes[0].horarioInicio, "07:00:00"); // Postgres TIME formata como hh:mm:ss
+  await t.test("salvar e buscar escala do mês", async () => {
+    const user = await signUp("escala@norteza.com", "senha123", "Escala Test");
+    await signIn("escala@norteza.com", "senha123");
 
-  // 7. Excluir a escala e validar a deleção
-  await excluirEscalaDoMes(user.id, 7, 2026);
-  const escalaExcluida = await buscarEscalaDoMes(user.id, 7, 2026);
-  assert.equal(escalaExcluida.escalaMesId, null);
-  assert.equal(escalaExcluida.plantoes.length, 0);
+    const db = await getDB();
+    const colabsRes = await db.query<{ id: string }>("SELECT id FROM public.colaboradores LIMIT 1;");
+    const colabId = colabsRes.rows[0].id;
 
-  // 8. Buscar do Storage simulado
-  const loadedUser = await getLocalUser();
-  assert.ok(loadedUser);
-  assert.equal(loadedUser?.nome, "Claudio Teste");
+    const plantoesMock = [
+      { colaboradorId: colabId, dia: 15, horarioInicio: "07:00", horarioFim: "19:00" },
+      { colaboradorId: colabId, dia: 16, horarioInicio: "19:00", horarioFim: "07:00" },
+    ];
+    await salvarEscalaDoMes(user.id, 7, 2026, plantoesMock, "rascunho");
+
+    const escala = await buscarEscalaDoMes(user.id, 7, 2026);
+    assert.ok(escala.escalaMesId);
+    assert.equal(escala.status, "rascunho");
+    assert.equal(escala.plantoes.length, 2);
+    assert.equal(escala.plantoes[0].dia, 15);
+    assert.equal(escala.plantoes[0].horarioInicio, "07:00:00");
+
+    await excluirEscalaDoMes(user.id, 7, 2026);
+    const escalaExcluida = await buscarEscalaDoMes(user.id, 7, 2026);
+    assert.equal(escalaExcluida.escalaMesId, null);
+    assert.equal(escalaExcluida.plantoes.length, 0);
+  });
+
+  await t.test("getLocalUser recupera sessão do localStorage", async () => {
+    await signUp("session@norteza.com", "senha123", "Session Test");
+    await signIn("session@norteza.com", "senha123");
+    const loadedUser = await getLocalUser();
+    assert.ok(loadedUser);
+    assert.equal(loadedUser?.nome, "Session Test");
+  });
 });
 
 test("atualizarCargo throws when cargo does not exist", async () => {
@@ -97,10 +118,9 @@ test("getLocalUser returns null for expired session", async () => {
   const user = await signUp("expired@norteza.com", "senha123", "Expired Test");
   await signIn("expired@norteza.com", "senha123");
 
-  // Manually expire the session
   const sessionStr = mockLocalStorage["integra_escala_user_session"];
   const session = JSON.parse(sessionStr);
-  session.expiresAt = Date.now() - 1; // expired 1ms ago
+  session.expiresAt = Date.now() - 1;
   mockLocalStorage["integra_escala_user_session"] = JSON.stringify(session);
 
   const result = await getLocalUser();

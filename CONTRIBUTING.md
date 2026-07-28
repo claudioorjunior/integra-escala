@@ -6,7 +6,7 @@ Thanks for your interest! This doc covers everything you need to get started.
 
 ## Local setup
 
-Integra Escala uses **PGlite** — a WASM-powered PostgreSQL that runs entirely in the browser. No Docker, no cloud service, no external database. Everything runs locally with one command.
+Integra Escala uses **PGlite** — a WASM-powered PostgreSQL embedded in the browser, persisting data via IndexedDB. No Docker, no cloud service, no external database. Everything runs locally with one command.
 
 ### Prerequisites
 
@@ -30,8 +30,7 @@ pnpm install
 # 4. Run
 pnpm dev
 
-# 5. Open
-open http://localhost:3000
+# 5. Access the app at http://localhost:3000
 ```
 
 ### Available scripts
@@ -77,34 +76,6 @@ SQL source files live in `docs/migrations/` for reference:
 ### Seed data
 
 The app bootstraps its first user on signup via `handle_new_user()` trigger in migration 001. For development, you can create a user through the `/cadastro` page and the app will auto-create the necessary ILPI association.
-
----
-
-## Project structure
-
-```text
-integra-escala/
-├── src/
-│   ├── app/                 # Next.js App Router
-│   │   ├── cadastro/        # User registration
-│   │   ├── cargos/          # Role management
-│   │   ├── colaboradores/   # Collaborator management
-│   │   ├── config/          # ILPI configuration
-│   │   ├── dashboard/       # Main scale dashboard
-│   │   └── login/           # Authentication
-│   ├── components/
-│   │   ├── calendar/        # MonthCard, ScaleEditor
-│   │   └── colaboradores/   # ColaboradorModal
-│   └── lib/
-│       ├── auth.ts          # Web Crypto-based auth
-│       ├── db.ts            # PGlite client + queries
-│       ├── migrations.ts    # Database migrations
-│       ├── schemas/         # Zod validation schemas
-│       └── i18n/            # Internationalization (pt-BR)
-├── docs/
-│   └── migrations/          # SQL reference files
-└── public/                  # Static assets
-```
 
 ---
 
