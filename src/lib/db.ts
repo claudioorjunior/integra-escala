@@ -243,6 +243,63 @@ export async function excluirCargo(userId: string, cargoId: string) {
   if ((res.affectedRows ?? 0) === 0) throw new Error("Cargo não encontrado ou não pertence à sua ILPI.");
 }
 
+// ─── Colaboradores CRUD ──────────────────────────────────────────
+
+export interface ColaboradorDados {
+  nome: string;
+  cargoId: string | null;
+  regime: string;
+  ativo: boolean;
+}
+
+export async function criarColaborador(
+  userId: string,
+  dados: ColaboradorDados
+) {
+  const db = await getDB();
+  const ilpiId = await getIlpiIdDoUsuario(db, userId);
+  if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  const res = await db.query<{ id: string }>(
+    `INSERT INTO public.colaboradores (ilpi_id, cargo_id, nome, regime, ativo)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id;`,
+    [ilpiId, dados.cargoId, dados.nome, dados.regime, dados.ativo]
+  );
+  return res.rows[0].id;
+}
+
+export async function atualizarColaborador(
+  userId: string,
+  colaboradorId: string,
+  dados: ColaboradorDados
+) {
+  const db = await getDB();
+  const ilpiId = await getIlpiIdDoUsuario(db, userId);
+  if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  const res = await db.query(
+    `UPDATE public.colaboradores
+       SET nome = $1, cargo_id = $2, regime = $3, ativo = $4
+     WHERE id = $5 AND ilpi_id = $6;`,
+    [dados.nome, dados.cargoId, dados.regime, dados.ativo, colaboradorId, ilpiId]
+  );
+  if ((res.affectedRows ?? 0) === 0)
+    throw new Error("Colaborador não encontrado ou não pertence à sua ILPI.");
+}
+
+export async function excluirColaborador(userId: string, colaboradorId: string) {
+  const db = await getDB();
+  const ilpiId = await getIlpiIdDoUsuario(db, userId);
+  if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  const res = await db.query(
+    `DELETE FROM public.colaboradores WHERE id = $1 AND ilpi_id = $2;`,
+    [colaboradorId, ilpiId]
+  );
+  if ((res.affectedRows ?? 0) === 0)
+    throw new Error("Colaborador não encontrado ou não pertence à sua ILPI.");
+}
+
 export async function excluirEscalaDoMes(userId: string, mes: number, ano: number) {
   const db = await getDB();
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
