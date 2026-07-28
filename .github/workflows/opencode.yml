@@ -26,6 +26,7 @@ jobs:
           persist-credentials: false
 
       - name: Run opencode
+        continue-on-error: true
         uses: anomalyco/opencode/github@latest
         env:
           POOLSIDE_API_KEY: ${{ secrets.POOLSIDE_API_KEY }}
