@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getLocalUser, signOut } from "@/lib/auth";
-import { getDB } from "@/lib/db";
+import {
+  getDB,
+  criarColaborador,
+  atualizarColaborador,
+  excluirColaborador,
+} from "@/lib/db";
 import { Plus, Search, Filter } from "lucide-react";
-import ColaboradorModal from "@/components/colaboradores/ColaboradorModal";
+import ColaboradorModal, {
+  type CargoOpcao,
+  type ColaboradorForm,
+} from "@/components/colaboradores/ColaboradorModal";
 import { ptBR } from "@/lib/i18n/pt-BR";
 
 interface Colaborador {
@@ -22,41 +30,38 @@ export default function ColaboradoresPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
-  const [colaboradorSelecionado, setColaboradorSelecionado] = useState<Colaborador | null>(null);
+  const [cargos, setCargos] = useState<CargoOpcao[]>([]);
+  const [colaboradorEditando, setColaboradorEditando] =
+    useState<ColaboradorForm | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const [filtroCargo, setFiltroCargo] = useState<string>("todos");
 
-  useEffect(() => {
-    async function carregarDados() {
-      const user = await getLocalUser();
-      if (!user) {
-        await signOut();
-        router.push("/login");
-        return;
-      }
+  const carregarDados = useCallback(async () => {
+    const user = await getLocalUser();
+    if (!user) {
+      await signOut();
+      router.push("/login");
+      return;
+    }
 
-      try {
-        const db = await getDB();
-        // 1. Pegar a ILPI vinculada
-        const uiRes = await db.query<{ ilpi_id: string }>(
-          `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
-          [user.id]
-        );
+    try {
+      const db = await getDB();
+      const uiRes = await db.query<{ ilpi_id: string }>(
+        `SELECT ilpi_id FROM public.usuario_ilpi WHERE usuario_id = $1 LIMIT 1;`,
+        [user.id]
+      );
 
-        if (uiRes.rows.length === 0) {
-          return;
-        }
+      if (uiRes.rows.length === 0) return;
+      const ilpiId = uiRes.rows[0].ilpi_id;
 
-        const ilpiId = uiRes.rows[0].ilpi_id;
-
-        // 2. Pegar colaboradores
-        const colabsRes = await db.query<any>(
-          `SELECT 
-            c.id, 
-            c.nome, 
-            c.regime, 
-            c.ativo, 
+      const [colabsRes, cargosRes] = await Promise.all([
+        db.query<any>(
+          `SELECT
+            c.id,
+            c.nome,
+            c.regime,
+            c.ativo,
             c.created_at,
             cg.nome as cargo
            FROM public.colaboradores c
@@ -64,9 +69,15 @@ export default function ColaboradoresPage() {
            WHERE c.ilpi_id = $1
            ORDER BY c.nome;`,
           [ilpiId]
-        );
+        ),
+        db.query<{ id: string; nome: string }>(
+          `SELECT id, nome FROM public.cargos WHERE ilpi_id = $1 ORDER BY nome;`,
+          [ilpiId]
+        ),
+      ]);
 
-        const mapped: Colaborador[] = colabsRes.rows.map((row: any) => ({
+      setColaboradores(
+        colabsRes.rows.map((row: any) => ({
           id: row.id,
           nome: row.nome,
           cargo: row.cargo || "Sem cargo",
@@ -74,18 +85,19 @@ export default function ColaboradoresPage() {
           foto_url: null,
           ativo: row.ativo ?? true,
           created_at: row.created_at,
-        }));
-
-        setColaboradores(mapped);
-      } catch (err) {
-        console.error("Erro ao carregar colaboradores do banco local:", err);
-      } finally {
-        setLoading(false);
-      }
+        }))
+      );
+      setCargos(cargosRes.rows.map((row) => ({ id: row.id, nome: row.nome })));
+    } catch (err) {
+      console.error("Erro ao carregar colaboradores do banco local:", err);
+    } finally {
+      setLoading(false);
     }
-
-    carregarDados();
   }, [router]);
+
+  useEffect(() => {
+    carregarDados();
+  }, [carregarDados]);
 
   if (loading) {
     return (
@@ -95,7 +107,7 @@ export default function ColaboradoresPage() {
     );
   }
 
-  const cargos = ["todos", ...new Set(colaboradores.map((c) => c.cargo))];
+  const cargosUnicos = ["todos", ...new Set(colaboradores.map((c) => c.cargo))];
 
   const colaboradoresFiltrados = colaboradores.filter((c) => {
     const matchBusca = c.nome.toLowerCase().includes(busca.toLowerCase());
@@ -103,14 +115,49 @@ export default function ColaboradoresPage() {
     return matchBusca && matchCargo;
   });
 
-  function abrirModal(colaborador: Colaborador) {
-    setColaboradorSelecionado(colaborador);
+  function abrirCriar() {
+    setColaboradorEditando(null);
     setModalAberto(true);
+  }
+
+  function abrirEditar(colaborador: Colaborador) {
+    setColaboradorEditando({
+      id: colaborador.id,
+      nome: colaborador.nome,
+      cargo: colaborador.cargo,
+      regime: colaborador.regime,
+      ativo: colaborador.ativo,
+    });
+    setModalAberto(true);
+  }
+
+  async function handleSalvar(dados: {
+    nome: string;
+    cargoId: string | null;
+    regime: string;
+    ativo: boolean;
+  }) {
+    const user = await getLocalUser();
+    if (!user) return;
+
+    if (colaboradorEditando) {
+      await atualizarColaborador(user.id, colaboradorEditando.id, dados);
+    } else {
+      await criarColaborador(user.id, dados);
+    }
+    await carregarDados();
+  }
+
+  async function handleExcluir() {
+    const user = await getLocalUser();
+    if (!user || !colaboradorEditando) return;
+    await excluirColaborador(user.id, colaboradorEditando.id);
+    await carregarDados();
   }
 
   function fecharModal() {
     setModalAberto(false);
-    setColaboradorSelecionado(null);
+    setColaboradorEditando(null);
   }
 
   return (
@@ -123,7 +170,10 @@ export default function ColaboradoresPage() {
             Gerencie sua equipe de colaboradores
           </p>
         </div>
-        <button className="bg-[#1a3c34] text-white text-sm font-medium rounded-lg px-5 py-2.5 hover:bg-[#143028] transition flex items-center gap-2">
+        <button
+          onClick={abrirCriar}
+          className="bg-[#1a3c34] text-white text-sm font-medium rounded-lg px-5 py-2.5 hover:bg-[#143028] transition flex items-center gap-2"
+        >
           <Plus size={16} strokeWidth={2} />
           Novo Colaborador
         </button>
@@ -148,7 +198,7 @@ export default function ColaboradoresPage() {
             onChange={(e) => setFiltroCargo(e.target.value)}
             className="px-4 py-2.5 border border-[#d4cdc0] rounded-lg text-sm focus:outline-none focus:border-[#1a3c34] transition bg-white"
           >
-            {cargos.map((cargo) => (
+            {cargosUnicos.map((cargo) => (
               <option key={cargo} value={cargo}>
                 {cargo === "todos" ? "Todos os cargos" : cargo}
               </option>
@@ -167,8 +217,13 @@ export default function ColaboradoresPage() {
           {colaboradoresFiltrados.map((colaborador) => (
             <div
               key={colaborador.id}
-              onClick={() => abrirModal(colaborador)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrirModal(colaborador); } }}
+              onClick={() => abrirEditar(colaborador)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  abrirEditar(colaborador);
+                }
+              }}
               role="button"
               tabIndex={0}
               className="bg-white rounded-xl border border-[#e8e2d4] p-5 cursor-pointer hover:shadow-md transition-shadow"
@@ -218,11 +273,14 @@ export default function ColaboradoresPage() {
         </div>
       )}
 
-      {/* Modal de detalhes */}
+      {/* Modal de criar/editar */}
       <ColaboradorModal
-        colaborador={colaboradorSelecionado}
+        colaborador={colaboradorEditando}
+        cargos={cargos}
         aberto={modalAberto}
         onFechar={fecharModal}
+        onSalvar={handleSalvar}
+        onExcluir={colaboradorEditando ? handleExcluir : undefined}
       />
     </>
   );
