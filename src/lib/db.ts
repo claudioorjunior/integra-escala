@@ -1,5 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import { MIGRATIONS } from "./migrations";
+import { REGIMES_VALIDOS } from "./scheduling";
 
 // Helper reutilizável: pega o ilpi_id do usuário logado a partir do db
 export async function getIlpiIdDoUsuario(db: PGlite, userId: string): Promise<string | null> {
@@ -252,6 +253,20 @@ export interface ColaboradorDados {
   ativo: boolean;
 }
 
+async function validarCargoDaIlpi(
+  db: PGlite,
+  cargoId: string | null,
+  ilpiId: string
+): Promise<void> {
+  if (!cargoId) return;
+  const res = await db.query(
+    `SELECT 1 FROM public.cargos WHERE id = $1 AND ilpi_id = $2;`,
+    [cargoId, ilpiId]
+  );
+  if (res.rows.length === 0)
+    throw new Error("Cargo não encontrado ou não pertence à sua ILPI.");
+}
+
 export async function criarColaborador(
   userId: string,
   dados: ColaboradorDados
@@ -259,6 +274,12 @@ export async function criarColaborador(
   const db = await getDB();
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
   if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  const regimesValidos = REGIMES_VALIDOS as readonly string[];
+  if (!regimesValidos.includes(dados.regime))
+    throw new Error(`Regime inválido: ${dados.regime}.`);
+
+  await validarCargoDaIlpi(db, dados.cargoId, ilpiId);
 
   const res = await db.query<{ id: string }>(
     `INSERT INTO public.colaboradores (ilpi_id, cargo_id, nome, regime, ativo)
@@ -276,6 +297,12 @@ export async function atualizarColaborador(
   const db = await getDB();
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
   if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  const regimesValidos = REGIMES_VALIDOS as readonly string[];
+  if (!regimesValidos.includes(dados.regime))
+    throw new Error(`Regime inválido: ${dados.regime}.`);
+
+  await validarCargoDaIlpi(db, dados.cargoId, ilpiId);
 
   const res = await db.query(
     `UPDATE public.colaboradores
