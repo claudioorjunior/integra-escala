@@ -1,6 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import { MIGRATIONS } from "./migrations";
-import { REGIMES_VALIDOS } from "./scheduling";
+import { normalizarRegime } from "./scheduling";
 
 // Helper reutilizável: pega o ilpi_id do usuário logado a partir do db
 export async function getIlpiIdDoUsuario(db: PGlite, userId: string): Promise<string | null> {
@@ -199,6 +199,14 @@ export async function salvarEscalaDoMes(
 
 // ─── Cargos CRUD ────────────────────────────────────────────────
 
+function validarRegimeOuLancar(regime: string): void {
+  if (!normalizarRegime(regime)) {
+    throw new Error(
+      `Regime inválido: "${regime}". Use um regime nomeado (24/72, 12x36, 5x2, noturnista, diarista) ou padrão NxM (ex: 12x72, 12x24, 24x72).`
+    );
+  }
+}
+
 export async function criarCargo(
   userId: string,
   dados: { nome: string; regime: string; descricao?: string }
@@ -206,6 +214,8 @@ export async function criarCargo(
   const db = await getDB();
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
   if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  validarRegimeOuLancar(dados.regime);
 
   const res = await db.query<{ id: string }>(
     `INSERT INTO public.cargos (ilpi_id, nome, regime, descricao)
@@ -223,6 +233,8 @@ export async function atualizarCargo(
   const db = await getDB();
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
   if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
+
+  validarRegimeOuLancar(dados.regime);
 
   const res = await db.query(
     `UPDATE public.cargos SET nome = $1, regime = $2, descricao = $3
@@ -275,10 +287,7 @@ export async function criarColaborador(
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
   if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
 
-  const regimesValidos = REGIMES_VALIDOS as readonly string[];
-  if (!regimesValidos.includes(dados.regime))
-    throw new Error(`Regime inválido: ${dados.regime}.`);
-
+  validarRegimeOuLancar(dados.regime);
   await validarCargoDaIlpi(db, dados.cargoId, ilpiId);
 
   const res = await db.query<{ id: string }>(
@@ -298,9 +307,7 @@ export async function atualizarColaborador(
   const ilpiId = await getIlpiIdDoUsuario(db, userId);
   if (!ilpiId) throw new Error("Usuário não vinculado a nenhuma ILPI.");
 
-  const regimesValidos = REGIMES_VALIDOS as readonly string[];
-  if (!regimesValidos.includes(dados.regime))
-    throw new Error(`Regime inválido: ${dados.regime}.`);
+  validarRegimeOuLancar(dados.regime);
 
   await validarCargoDaIlpi(db, dados.cargoId, ilpiId);
 

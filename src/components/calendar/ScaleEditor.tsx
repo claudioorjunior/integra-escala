@@ -41,13 +41,13 @@ function getDiaSemana(dia: number, mes: number, ano: number) {
 
 
 function mapColaboradorParaEscala(c: Colaborador): ColaboradorEscala {
-  const regime = normalizarRegime(c.regime);
   return {
     id: c.id,
     nome: c.nome,
     cargoId: null,
     cargoNome: c.cargo,
-    regime: regime ?? "5x2", // fallback para regimes não reconhecidos
+    // Passa o regime original (texto livre) — o gerador normaliza e emite aviso se não reconhecer
+    regime: c.regime,
   };
 }
 

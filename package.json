@@ -21,7 +21,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/schemas/__tests__/escala.test.ts",
+    "test": "tsx --test src/lib/scheduling/__tests__/generator.test.ts src/lib/scheduling/__tests__/custom-cycles.test.ts src/lib/schemas/__tests__/escala.test.ts",
+    "test:all": "tsx --test src/lib/scheduling/__tests__/*.test.ts src/lib/schemas/__tests__/*.test.ts src/lib/__tests__/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

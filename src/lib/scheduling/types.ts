@@ -7,8 +7,23 @@
 /** Turno derivado do regime, não configurado por ILPI. */
 export type Turno = "manha" | "tarde" | "noite" | "diurno" | "integral";
 
-/** Regime reconhecido. Texto livre da UI é normalizado para um destes. */
+/** Regimes nomeados reconhecidos pelo motor. */
 export type Regime = "24/72" | "12x36" | "5x2" | "noturnista" | "diarista";
+
+/**
+ * Ciclo de trabalho genérico: horas trabalhadas × horas de folga.
+ * Qualquer padrão NxM (ex: 12x24, 12x48, 12x60, 12x72, 24x72) é parseado neste tipo.
+ */
+export interface Ciclo {
+  horasTrabalhadas: number;
+  horasFolga: number;
+}
+
+/**
+ * Regime efetivo: um regime nomeado OU um ciclo customizado.
+ * O texto livre da UI é normalizado pelo motor via `normalizarRegime`.
+ */
+export type RegimeEfetivo = Regime | Ciclo;
 
 /** Horário (HH:MM) de início e fim de um plantão. Fim pode ser no dia seguinte. */
 export interface Horario {
@@ -21,8 +36,8 @@ export interface Colaborador {
   nome: string;
   cargoId: string | null;
   cargoNome: string;
-  /** Regime efetivo — pode sobrescrever o do cargo. */
-  regime: Regime;
+  /** Regime — texto livre da UI (ex: "12x36", "24/72", "12x72", "5x2"). Normalizado pelo motor. */
+  regime: string;
   diasFolga?: number[];
   restricoes?: string[];
   horarioNominal?: Horario;
@@ -53,7 +68,9 @@ export interface Aviso {
     | "intervalo_insuficiente"
     | "colisao"
     | "carga_semanal_excessiva"
-    | "dsr_violado";
+    | "dsr_violado"
+    | "ciclo_intervalo_violado"
+    | "cobertura_insuficiente";
   dia?: number;
   colaboradorId?: string;
   mensagem: string;

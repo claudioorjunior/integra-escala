@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Save, Trash2 } from "lucide-react";
+import { REGIMES_PRESETS, normalizarRegime } from "@/lib/scheduling";
 import Modal from "@/components/ui/Modal";
-import { REGIMES_VALIDOS } from "@/lib/scheduling";
 
-const REGIMES = [...REGIMES_VALIDOS];
+const REGIMES = [...REGIMES_PRESETS];
 
 export interface CargoOpcao {
   id: string;
@@ -162,18 +162,26 @@ export default function ColaboradorModal({
             <label htmlFor="colab-regime" className="block text-sm font-medium text-[#555] mb-1.5">
               Regime de trabalho *
             </label>
-            <select
+            <input
               id="colab-regime"
+              type="text"
+              list="regime-presets-colab"
+              required
+              placeholder="Ex: 12x36, 24/72, 12x72, 5x2..."
               value={regime}
               onChange={(e) => setRegime(e.target.value)}
-              className="w-full border border-[#d4cdc0] rounded-lg px-4 py-2.5 text-sm outline-none transition focus:border-[#1a3c34] focus:ring-2 focus:ring-[#1a3c34]/10 bg-white"
-            >
+              className="w-full border border-[#d4cdc0] rounded-lg px-4 py-2.5 text-sm outline-none transition focus:border-[#1a3c34] focus:ring-2 focus:ring-[#1a3c34]/10"
+            />
+            <datalist id="regime-presets-colab">
               {REGIMES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
+                <option key={r} value={r} />
               ))}
-            </select>
+            </datalist>
+            {regime && !normalizarRegime(regime) && (
+              <p className="text-xs text-amber-600 mt-1">
+                Formato não reconhecido. Use o padrão NxM (ex: 12x36, 12x72) ou um regime nomeado (24/72, 5x2, noturnista, diarista).
+              </p>
+            )}
           </div>
 
           <label className="flex items-center gap-3 cursor-pointer">

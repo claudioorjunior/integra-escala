@@ -1,5 +1,7 @@
 import {
   type Regime,
+  type RegimeEfetivo,
+  type Ciclo,
   type Colaborador,
   type Plantao,
   type Horario,
@@ -8,24 +10,74 @@ import {
   type DiaDaSemana,
 } from "./types";
 
-/** Regimes reconhecidos pelo motor de geração. */
+/** Regimes nomeados reconhecidos pelo motor de geração. */
 export const REGIMES_VALIDOS = ["24/72", "12x36", "5x2", "noturnista", "diarista"] as const;
 
-export function normalizarRegime(texto: string): Regime | undefined {
+/** Presets de ciclos comuns para a UI (formato NxM). */
+export const CICLOS_PRESETS = ["12x24", "12x48", "12x60", "12x72", "24x72"] as const;
+
+/** Todos os presets para a UI (regimes nomeados + ciclos comuns). */
+export const REGIMES_PRESETS = [...REGIMES_VALIDOS, ...CICLOS_PRESETS] as const;
+
+/** Parse de string NxM (ex: "12x36", "12x72", "24x72") em Ciclo. */
+export function parseCiclo(texto: string): Ciclo | undefined {
+  const match = texto.toLowerCase().trim().match(/^(\d+)\s*[x\u00d7]\s*(\d+)$/);
+  if (!match) return undefined;
+  const horasTrabalhadas = parseInt(match[1], 10);
+  const horasFolga = parseInt(match[2], 10);
+  if (horasTrabalhadas <= 0 || horasFolga <= 0) return undefined;
+  if (horasTrabalhadas > 48) return undefined; // sanity check
+  return { horasTrabalhadas, horasFolga };
+}
+
+/**
+ * Normaliza o texto livre do regime em um RegimeEfetivo.
+ * Aceita: "24/72", "12x36", "5x2", "noturnista", "diarista",
+ * e qualquer padrão NxM (12x24, 12x48, 12x60, 12x72, 24x72, etc.).
+ */
+export function normalizarRegime(texto: string): RegimeEfetivo | undefined {
   const r = texto.toLowerCase().trim();
+  // Named regimes
   if (r === "24/72" || r === "24h/72h") return "24/72";
   if (r === "12x36" || r === "12h/36h") return "12x36";
   if (r === "5x2" || r === "5 dias / 2 dias") return "5x2";
   if (r.includes("noturn") || r === "noturnista") return "noturnista";
   if (r.includes("diarista") || r === "diarista") return "diarista";
+  // Custom NxM cycle (12x24, 12x48, 12x60, 12x72, 24x72, etc.)
+  const ciclo = parseCiclo(r);
+  if (ciclo) return ciclo;
   return undefined;
+}
+
+/** Formata um RegimeEfetivo para exibição. */
+export function formatRegime(regime: RegimeEfetivo): string {
+  if (typeof regime === "string") return regime;
+  return `${regime.horasTrabalhadas}x${regime.horasFolga}`;
 }
 
 export interface HorarioComTurno extends Horario {
   turno: string;
 }
 
-export function horarioPeloRegime(regime: Regime): HorarioComTurno {
+/** Deriva horário (início/fim) e turno a partir do regime ou ciclo. */
+export function horarioPeloRegime(regime: RegimeEfetivo): HorarioComTurno {
+  if (typeof regime !== "string") {
+    // Custom cycle: derive schedule from work hours
+    const ciclo = regime;
+    const h = ciclo.horasTrabalhadas;
+    if (h >= 24) return { inicio: "07:00", fim: "07:00", turno: "integral" };
+    if (h === 12) return { inicio: "19:00", fim: "07:00", turno: "noite" };
+    if (h === 8) return { inicio: "08:00", fim: "17:00", turno: "manha" };
+    // Generic: start at 07:00, work N hours
+    const inicioMin = 7 * 60;
+    const fimMin = inicioMin + h * 60;
+    const fh = Math.floor(fimMin / 60) % 24;
+    const fm = fimMin % 60;
+    const fim = `${String(fh).padStart(2, "0")}:${String(fm).padStart(2, "0")}`;
+    const turno = (fh >= 18 || fh < 6) ? "noite" : fh >= 12 ? "tarde" : "manha";
+    return { inicio: "07:00", fim, turno };
+  }
+  // Named regime
   switch (regime) {
     case "24/72":
       return { inicio: "07:00", fim: "07:00", turno: "integral" };
@@ -100,48 +152,44 @@ function distribuirComEspacamento(
   qtdNecessaria: number,
   rand: () => number
 ): number[] {
-  // Para 24/72: garante no mínimo N dias entre cada plantão
-  const resultado: number[] = [];
-  const pool = [...diasDisponiveis];
-  let ultimoDia = -Infinity;
+  // Para 24/72 e ciclos customizados: garante no mínimo N dias entre cada plantão
+  // Estratégia: tentar todos os offsets iniciais (0..espacamento-1) e escolher o que
+  // maximiza cobertura, usando a seed para desempate determinístico.
+  if (diasDisponiveis.length === 0) return [];
+  if (qtdNecessaria <= 0) return [];
 
-  // Tentativa 1: greedy a partir de um ponto aleatório
-  const startIdx = Math.floor(rand() * Math.max(1, pool.length));
-  const ordenado = [...pool.slice(startIdx), ...pool.slice(0, startIdx)];
+  const ordenado = [...diasDisponiveis].sort((a, b) => a - b);
 
-  for (const d of ordenado) {
-    if (resultado.length >= qtdNecessaria) break;
-    if (d >= ultimoDia + espacamentoMinimo) {
-      resultado.push(d);
-      ultimoDia = d;
-    }
-  }
-
-  // Se não conseguiu preencher, relaxa gradualmente o espaçamento
-  if (resultado.length < qtdNecessaria) {
-    const restantes = pool.filter((d) => !resultado.includes(d));
-    for (let threshold = espacamentoMinimo - 1; threshold >= 1 && resultado.length < qtdNecessaria; threshold--) {
-      for (const d of restantes) {
-        if (resultado.length >= qtdNecessaria) break;
-        if (!resultado.includes(d)) {
-          const lastDia = resultado.length > 0 ? resultado[resultado.length - 1] : -Infinity;
-          if (d >= lastDia + threshold) {
-            resultado.push(d);
-          }
+  let melhor: number[] = [];
+  for (let offset = 0; offset < espacamentoMinimo; offset++) {
+    const resultado: number[] = [];
+    for (const d of ordenado) {
+      if (resultado.length >= qtdNecessaria) break;
+      if (resultado.length === 0) {
+        // Primeiro dia: só inclui se estiver no offset certo (d % espacamento === offset)
+        // Como fallback, inclui o primeiro disponível
+        if (d % espacamentoMinimo === offset || resultado.length === 0) {
+          resultado.push(d);
+        }
+      } else {
+        const ultimo = resultado[resultado.length - 1];
+        if (d >= ultimo + espacamentoMinimo) {
+          resultado.push(d);
         }
       }
     }
-    // Último recurso: adiciona dias restantes quando não há alternativa
-    if (resultado.length < qtdNecessaria) {
-      const stillMissing = pool.filter((d) => !resultado.includes(d));
-      for (const d of stillMissing) {
-        if (resultado.length >= qtdNecessaria) break;
-        resultado.push(d);
-      }
+    // Desempate: mais dias ganha; empate => usa rand para escolher
+    if (resultado.length > melhor.length) {
+      melhor = resultado;
+    } else if (resultado.length === melhor.length && rand() > 0.5) {
+      melhor = resultado;
     }
   }
 
-  return resultado.sort((a, b) => a - b);
+  // Não relaxamos o espaçamento: a folga do colaborador é uma regra inviolável.
+  // Quando não houver dias suficientes, o chamador gera um aviso de cobertura
+  // insuficiente e mantém somente os plantões seguros.
+  return melhor.sort((a, b) => a - b);
 }
 
 export function gerarEscala(args: {
@@ -203,7 +251,6 @@ export function gerarEscala(args: {
       // Skip days where this collaborator already has a manual plantão
       if (manterAjustesManuais && plantoes[d].some((p) => p.colaboradorId === colab.id)) continue;
       const diaSemana = (inicioMes.getDay() + d - 1) % 7;
-      const data = new Date(ano, mes - 1, d);
 
       if (diasFolga.has(diaSemana as 0 | 1 | 2 | 3 | 4 | 5 | 6)) continue;
       if (regime === "diarista" && ehFimDeSemana(diaSemana as DiaDaSemana)) continue;
@@ -214,17 +261,36 @@ export function gerarEscala(args: {
       avisos.push({
         tipo: "dia_descoberto",
         colaboradorId: colab.id,
-        mensagem: `${colab.nome} (${regime}) não tem dias disponíveis no mês — verifique folgas.`,
+        mensagem: `${colab.nome} (${formatRegime(regime)}) não tem dias disponíveis no mês — verifique folgas.`,
       });
       continue;
     }
 
     const qtdDias = calcularQtdDias(regime, diasDisponiveis, totalDias, rand);
     let diasTrabalho: number[];
-    if (regime === "12x36") {
+    if (typeof regime !== "string") {
+      // Custom cycle: spacing = full cycle length in days (work + rest)
+      // A 12x24 cycle = 36h total → needs 2-day spacing (shift spans into next day)
+      const espacamento = Math.max(1, Math.ceil((regime.horasTrabalhadas + regime.horasFolga) / 24));
+      diasTrabalho = distribuirComEspacamento(diasDisponiveis, espacamento, qtdDias, rand);
+      if (diasTrabalho.length < qtdDias) {
+        avisos.push({
+          tipo: "cobertura_insuficiente",
+          colaboradorId: colab.id,
+          mensagem: `${colab.nome} (${formatRegime(regime)}): foram gerados ${diasTrabalho.length} de ${qtdDias} plantões planejados para preservar a folga mínima de ${regime.horasFolga}h.`,
+        });
+      }
+    } else if (regime === "12x36") {
       diasTrabalho = distribuirAlternado(diasDisponiveis, colabIndex % 2);
     } else if (regime === "24/72") {
       diasTrabalho = distribuirComEspacamento(diasDisponiveis, 3, qtdDias, rand);
+      if (diasTrabalho.length < qtdDias) {
+        avisos.push({
+          tipo: "cobertura_insuficiente",
+          colaboradorId: colab.id,
+          mensagem: `${colab.nome} (24/72): foram gerados ${diasTrabalho.length} de ${qtdDias} plantões planejados para preservar 72h de folga.`,
+        });
+      }
     } else if (regime === "5x2") {
       // 5x2: apenas dias úteis (segunda a sexta)
       const diasUteis = diasDisponiveis.filter((d) => {
@@ -257,11 +323,18 @@ export function gerarEscala(args: {
 }
 
 function calcularQtdDias(
-  regime: Regime,
+  regime: RegimeEfetivo,
   diasDisponiveis: number[],
   totalDias: number,
-  rand: () => number
+  _rand: () => number
 ): number {
+  if (typeof regime !== "string") {
+    // Custom cycle: qtd = totalDias / spacing (ceiled)
+    // spacing = ceil((work + folga) / 24) — full cycle in days
+    const cicloDias = (regime.horasTrabalhadas + regime.horasFolga) / 24;
+    const espacamento = Math.max(1, Math.ceil(cicloDias));
+    return Math.max(1, Math.ceil(totalDias / espacamento));
+  }
   switch (regime) {
     case "24/72":
       return Math.max(1, Math.ceil(totalDias / 4));
@@ -289,7 +362,9 @@ export function validarEscala(args: {
 }): Aviso[] {
   const { mes, ano, plantoes, colaboradores, totalDias } = args;
   const avisos: Aviso[] = [];
-  const mapRegime = new Map(colaboradores.map((c) => [c.id, c.regime]));
+  const mapRegimeEfetivo = new Map(
+    colaboradores.map((c) => [c.id, normalizarRegime(c.regime)])
+  );
   const mapNome = new Map(colaboradores.map((c) => [c.id, c.nome]));
 
   function nome(id: string): string {
@@ -301,7 +376,7 @@ export function validarEscala(args: {
     const plantoesOntem = plantoes[d - 1] ?? [];
 
     for (const p of plantoesDia) {
-      const regime = mapRegime.get(p.colaboradorId);
+      const regime = mapRegimeEfetivo.get(p.colaboradorId);
       const mins = minutosEntre(p.horario.inicio, p.horario.fim);
       const horasTrabalhadas = mins / 60;
 
@@ -312,6 +387,16 @@ export function validarEscala(args: {
           dia: d,
           colaboradorId: p.colaboradorId,
           mensagem: `${nome(p.colaboradorId)}: regime 5x2 com ${horasTrabalhadas.toFixed(1)}h no dia ${d} (teto 10h/dia).`,
+        });
+      }
+
+      // 1b. Teto de horas para ciclos customizados
+      if (regime !== undefined && typeof regime !== "string" && horasTrabalhadas > regime.horasTrabalhadas + 1) {
+        avisos.push({
+          tipo: "teto_horas",
+          dia: d,
+          colaboradorId: p.colaboradorId,
+          mensagem: `${nome(p.colaboradorId)}: ciclo ${regime.horasTrabalhadas}x${regime.horasFolga} com ${horasTrabalhadas.toFixed(1)}h no dia ${d} (esperado ~${regime.horasTrabalhadas}h).`,
         });
       }
 
@@ -349,6 +434,18 @@ export function validarEscala(args: {
             mensagem: `${nome(p.colaboradorId)}: intervalo de ${Math.round(intervalo / 60)}h entre jornadas nos dias ${d - 1} e ${d} (mínimo legal: 11h).`,
           });
         }
+        // 3b. Verificar intervalo do ciclo customizado
+        if (regime !== undefined && typeof regime !== "string") {
+          const intervaloHoras = intervalo / 60;
+          if (intervaloHoras < regime.horasFolga) {
+            avisos.push({
+              tipo: "ciclo_intervalo_violado",
+              dia: d,
+              colaboradorId: p.colaboradorId,
+              mensagem: `${nome(p.colaboradorId)}: intervalo de ${intervaloHoras.toFixed(1)}h entre jornadas nos dias ${d - 1} e ${d} (ciclo ${regime.horasTrabalhadas}x${regime.horasFolga} exige ${regime.horasFolga}h de folga).`,
+            });
+          }
+        }
       }
     }
 
@@ -368,7 +465,7 @@ export function validarEscala(args: {
   for (let d = 1; d <= totalDias; d++) {
     const semana = Math.floor((d - 1 + new Date(ano, mes - 1, 1).getDay()) / 7) + 1;
     for (const p of (plantoes[d] ?? [])) {
-      if (mapRegime.get(p.colaboradorId) !== "5x2") continue;
+      if (mapRegimeEfetivo.get(p.colaboradorId) !== "5x2") continue;
       if (!horasPorSemana.has(p.colaboradorId)) horasPorSemana.set(p.colaboradorId, new Map());
       const mapSemana = horasPorSemana.get(p.colaboradorId)!;
       const mins = minutosEntre(p.horario.inicio, p.horario.fim);
@@ -393,7 +490,7 @@ export function validarEscala(args: {
     const diaSemana = new Date(ano, mes - 1, d).getDay();
     if (diaSemana !== 0) continue; // só domingos
     for (const p of (plantoes[d] ?? [])) {
-      if (mapRegime.get(p.colaboradorId) !== "5x2") continue;
+      if (mapRegimeEfetivo.get(p.colaboradorId) !== "5x2") continue;
       domingosTrabalhados.set(p.colaboradorId, (domingosTrabalhados.get(p.colaboradorId) ?? 0) + 1);
     }
   }
