@@ -139,11 +139,16 @@ function distribuirEquilibrado(
 
 function distribuirAlternado(
   diasDisponiveis: number[],
-  paridade: number // 0 ou 1, derivado do índice estável do colaborador
+  paridade: number, // 0 ou 1, derivado do índice estável do colaborador
+  deslocamentoDias = 0
 ): number[] {
   // Para 12x36: dia sim, dia não. Paridade determinística pelo índice do colaborador,
   // garantindo que colaboradores pareados recebam paridades opostas e cubram todos os dias.
-  return diasDisponiveis.filter((d) => d % 2 === paridade);
+  // O deslocamento mantém a alternância quando o mês anterior tem 31 dias.
+  return diasDisponiveis.filter((d) => {
+    const paridadeDoDia = ((d + deslocamentoDias) % 2 + 2) % 2;
+    return paridadeDoDia === paridade;
+  });
 }
 
 function distribuirComEspacamento(
@@ -166,9 +171,8 @@ function distribuirComEspacamento(
     for (const d of ordenado) {
       if (resultado.length >= qtdNecessaria) break;
       if (resultado.length === 0) {
-        // Primeiro dia: só inclui se estiver no offset certo (d % espacamento === offset)
-        // Como fallback, inclui o primeiro disponível
-        if (d % espacamentoMinimo === offset || resultado.length === 0) {
+        // Primeiro dia: inclui apenas se estiver no offset certo (respeita o espaçamento inicial)
+        if (d % espacamentoMinimo === offset) {
           resultado.push(d);
         }
       } else {
@@ -204,6 +208,9 @@ export function gerarEscala(args: {
   const rand = gerarSeed(seed);
   const totalDias = new Date(ano, mes, 0).getDate();
   const avisos: Aviso[] = [];
+  const diasDesdeReferencia = Math.floor(
+    (Date.UTC(ano, mes - 1, 1) - Date.UTC(2026, 0, 1)) / (24 * 60 * 60 * 1000)
+  );
 
   const inicioMes = new Date(ano, mes - 1, 1);
 
@@ -281,7 +288,7 @@ export function gerarEscala(args: {
         });
       }
     } else if (regime === "12x36") {
-      diasTrabalho = distribuirAlternado(diasDisponiveis, colabIndex % 2);
+      diasTrabalho = distribuirAlternado(diasDisponiveis, colabIndex % 2, diasDesdeReferencia);
     } else if (regime === "24/72") {
       diasTrabalho = distribuirComEspacamento(diasDisponiveis, 3, qtdDias, rand);
       if (diasTrabalho.length < qtdDias) {

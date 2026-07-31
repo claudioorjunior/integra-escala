@@ -119,3 +119,30 @@ describe("regression: 24/72 never has consecutive days", () => {
   });
 });
 
+describe("regression: 12x36 preserves cadence across month boundaries", () => {
+  it("keeps a two-day interval when a 31-day month ends", () => {
+    const colabs: Colaborador[] = [
+      { id: "c1", nome: "A", cargoId: null, cargoNome: "X", regime: "12x36" },
+      { id: "c2", nome: "B", cargoId: null, cargoNome: "X", regime: "12x36" },
+    ];
+    const janeiro = gerarEscala({ mes: 1, ano: 2026, colaboradores: colabs, seed: 42 });
+    const fevereiro = gerarEscala({ mes: 2, ano: 2026, colaboradores: colabs, seed: 42 });
+
+    for (const colaborador of colabs) {
+      const diasJaneiro = Object.keys(janeiro.plantoes)
+        .filter((dia) => janeiro.plantoes[Number(dia)].some((p) => p.colaboradorId === colaborador.id))
+        .map(Number);
+      const primeiroDiaFevereiro = Object.keys(fevereiro.plantoes)
+        .find((dia) => fevereiro.plantoes[Number(dia)].some((p) => p.colaboradorId === colaborador.id));
+
+      assert.ok(diasJaneiro.length > 0);
+      assert.ok(primeiroDiaFevereiro !== undefined);
+
+      const ultimoDiaJaneiro = diasJaneiro[diasJaneiro.length - 1];
+      const intervalo = (new Date(2026, 1, Number(primeiroDiaFevereiro)).getTime()
+        - new Date(2026, 0, ultimoDiaJaneiro).getTime()) / (24 * 60 * 60 * 1000);
+      assert.equal(intervalo, 2, `${colaborador.nome} should keep a 2-day cadence across January`);
+    }
+  });
+});
+

@@ -27,7 +27,7 @@ const CORES_PALETA = ["#1a3c34", "#c4b998", "#8b5e3c", "#5a7a6a", "#a0522d", "#6
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [mesEditando, setMesEditando] = useState<{ mes: number; ano: number } | null>(null);
+  const [mesEditando, setMesEditando] = useState<{ mes: number; ano: number; gerar: boolean } | null>(null);
   
   const [ilpiInfo, setIlpiInfo] = useState<{ nome: string; colaboradoresCount: number } | null>(null);
   const [escalasPorMes, setEscalasPorMes] = useState<Record<string, any[]>>({});
@@ -65,15 +65,20 @@ export default function DashboardPage() {
             [ilpiId]
           ),
           db.query<any>(
-            `SELECT id, nome FROM public.colaboradores WHERE ilpi_id = $1 ORDER BY nome;`,
+            `SELECT c.id, c.nome, COALESCE(k.nome, 'Cuidador') AS cargo
+             FROM public.colaboradores c
+             LEFT JOIN public.cargos k ON k.id = c.cargo_id
+             WHERE c.ilpi_id = $1
+             ORDER BY c.nome;`,
             [ilpiId]
           ),
         ]);
 
-        const colabMap: Record<string, { nome: string; cor: string }> = {};
+        const colabMap: Record<string, { nome: string; cargo: string; cor: string }> = {};
         colabsRes.rows.forEach((c: any, index: number) => {
           colabMap[c.id] = {
             nome: c.nome.split(" ")[0],
+            cargo: c.cargo || "sem cargo",
             cor: CORES_PALETA[index % CORES_PALETA.length],
           };
         });
@@ -98,10 +103,10 @@ export default function DashboardPage() {
             const plantoesAgrupados: Record<number, any[]> = {};
             escala.plantoes.forEach((p) => {
               if (!plantoesAgrupados[p.dia]) plantoesAgrupados[p.dia] = [];
-              const cInfo = colabMap[p.colaboradorId] || { nome: "Externo", cor: "#999" };
+              const cInfo = colabMap[p.colaboradorId] || { nome: "Externo", cargo: "sem cargo", cor: "#999" };
               plantoesAgrupados[p.dia].push({
                 nome: cInfo.nome,
-                cargo: "",
+                cargo: cInfo.cargo,
                 horario: `${(p.horarioInicio ?? "07:00").slice(0, 5)}-${(p.horarioFim ?? "19:00").slice(0, 5)}`,
                 cor: cInfo.cor,
               });
@@ -183,21 +188,25 @@ export default function DashboardPage() {
               mes={mes}
               ano={ano}
               dias={diasReais && diasReais.length > 0 ? diasReais : undefined}
-              onEditar={() => setMesEditando({ mes, ano })}
-              onGerar={() => setMesEditando({ mes, ano })}
+              onEditar={() => setMesEditando({ mes, ano, gerar: false })}
+              onGerar={() => setMesEditando({ mes, ano, gerar: true })}
             />
           );
         })}
       </div>
 
       {/* Editor de escala (modal) */}
-      <ScaleEditor
-        mes={mesEditando?.mes ?? 1}
-        ano={mesEditando?.ano ?? 2026}
-        aberto={mesEditando !== null}
-        onFechar={() => setMesEditando(null)}
-        onSalvo={carregarDados}
-      />
+      {mesEditando && (
+        <ScaleEditor
+          key={`${mesEditando.mes}-${mesEditando.ano}`}
+          mes={mesEditando.mes}
+          ano={mesEditando.ano}
+          aberto
+          gerarAoAbrir={mesEditando.gerar}
+          onFechar={() => setMesEditando(null)}
+          onSalvo={carregarDados}
+        />
+      )}
     </>
   );
 }

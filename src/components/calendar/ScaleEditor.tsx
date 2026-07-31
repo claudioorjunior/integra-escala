@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { X, Sparkles, Printer, Trash2, Save } from "lucide-react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { X, Sparkles, Printer, Trash2, Save, ChevronDown, Search } from "lucide-react";
 import { getLocalUser } from "@/lib/auth";
 import { getDB, buscarEscalaDoMes, salvarEscalaDoMes, excluirEscalaDoMes, PlantaoDB } from "@/lib/db";
 import { gerarEscala, type Colaborador as ColaboradorEscala, normalizarRegime, horarioPeloRegime, type Aviso } from "@/lib/scheduling";
@@ -19,6 +19,7 @@ interface ScaleEditorProps {
   aberto: boolean;
   onFechar: () => void;
   onSalvo?: () => void;
+  gerarAoAbrir?: boolean;
 }
 
 interface Colaborador {
@@ -35,7 +36,7 @@ function getTotalDias(mes: number, ano: number) {
   return new Date(ano, mes, 0).getDate();
 }
 
-function getDiaSemana(dia: number, mes: number, ano: number) {
+function diaDaAbreviadoFn(dia: number, mes: number, ano: number) {
   return new Date(ano, mes - 1, dia).getDay();
 }
 
@@ -57,6 +58,7 @@ export default function ScaleEditor({
   aberto,
   onFechar,
   onSalvo,
+  gerarAoAbrir = false,
 }: ScaleEditorProps) {
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [plantoes, setPlantoes] = useState<Record<number, Record<string, string>>>({});
@@ -64,21 +66,30 @@ export default function ScaleEditor({
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [avisos, setAvisos] = useState<Aviso[]>([]);
+  const geracaoAutomaticaRef = useRef(false);
+  const [menuDia, setMenuDia] = useState<number | null>(null);
+  const [buscaColab, setBuscaColab] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const totalDias = getTotalDias(mes, ano);
-  const primeiroDiaSemana = getDiaSemana(1, mes, ano);
+  const firstWeekday = diaDaAbreviadoFn(1, mes, ano);
 
   const celulas = useMemo(() => {
     const cells: (number | null)[] = [];
-    for (let i = 0; i < primeiroDiaSemana; i++) cells.push(null);
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
     for (let d = 1; d <= totalDias; d++) cells.push(d);
     return cells;
-  }, [totalDias, primeiroDiaSemana]);
+  }, [totalDias, firstWeekday]);
 
   useEffect(() => {
     if (!aberto) return;
 
     let cancelled = false;
+    geracaoAutomaticaRef.current = false;
+    setColaboradores([]);
+    setPlantoes({});
+    setAvisos([]);
+    setErro(null);
 
     async function carregarDados() {
       const user = await getLocalUser();
@@ -141,9 +152,9 @@ export default function ScaleEditor({
   }, [mes, ano, aberto]);
 
   // Algoritmo de geração automática (motor de scheduling)
-  function handleGerarEscala() {
+  const handleGerarEscala = useCallback((confirmarSubstituicao = true) => {
     const temDados = Object.values(plantoes).some((d) => Object.keys(d).length > 0);
-    if (temDados && !confirm("Gerar a escala substituirá os plantões atuais deste mês. Continuar?")) return;
+    if (confirmarSubstituicao && temDados && !confirm("Gerar a escala substituirá os plantões atuais deste mês. Continuar?")) return;
     setErro(null);
     setAvisos([]);
 
@@ -172,7 +183,28 @@ export default function ScaleEditor({
       console.error("Erro ao gerar escala:", err);
       setErro("Erro ao gerar escala. Tente novamente.");
     }
-  }
+  }, [ano, colaboradores, mes, plantoes, totalDias]);
+
+  useEffect(() => {
+    if (!aberto || !gerarAoAbrir || loading || colaboradores.length === 0 || geracaoAutomaticaRef.current) return;
+    geracaoAutomaticaRef.current = true;
+    handleGerarEscala(false);
+  }, [aberto, colaboradores.length, gerarAoAbrir, handleGerarEscala, loading]);
+
+  useEffect(() => {
+    if (menuDia === null) return;
+    const aoClicarFora = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuDia(null);
+        setBuscaColab("");
+      }
+    };
+    document.addEventListener("mousedown", aoClicarFora);
+    return () => document.removeEventListener("mousedown", aoClicarFora);
+  }, [menuDia]);
+
+  const diasTotalLinhas = Math.ceil((firstWeekday + totalDias) / 7);
+  const alturaLinha = `min(132px, calc((100dvh - 340px) / ${diasTotalLinhas}))`;
 
   // Alternar turno ao clicar na célula
   function toggleCell(dia: number, colabId: string, regime: string) {
@@ -253,23 +285,23 @@ export default function ScaleEditor({
       aberto={aberto}
       onFechar={onFechar}
       titulo={`${MESES[mes - 1]} ${ano}`}
-      size="xl"
-      overlayClassName="flex items-start justify-center overflow-auto bg-black/40"
-      dialogClassName="mx-4 my-6"
+      size="full"
+      overlayClassName="flex items-start justify-center overflow-hidden bg-black/40"
+      dialogClassName="mx-4 my-4 h-[92dvh] max-h-[92dvh] flex flex-col"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8e2d4]">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8e2d4] shrink-0">
         <div>
           <h2 className="text-lg font-medium text-[#1a3c34]">
             {MESES[mes - 1]} {ano}
           </h2>
           <p className="text-xs text-[#8b7d6b] mt-0.5">
-            Clique nas células para alternar a escala do colaborador
+            O mês inteiro fica visível. Gere a escala para distribuir os colaboradores por dia.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={handleGerarEscala}
+            onClick={() => handleGerarEscala()}
             disabled={loading}
             className="bg-[#1a3c34] text-white text-sm font-medium rounded-lg px-5 py-2 hover:bg-[#143028] transition flex items-center gap-2 disabled:opacity-50"
           >
@@ -287,7 +319,7 @@ export default function ScaleEditor({
       </div>
 
           {/* Legenda */}
-          <div className="px-6 py-3 border-b border-[#e8e2d4] bg-[#faf8f4]">
+          <div className="px-6 py-3 border-b border-[#e8e2d4] bg-[#faf8f4] shrink-0">
             <div className="flex flex-wrap items-center gap-4 text-xs">
               <span className="font-medium text-[#555]">Colaboradores ativos:</span>
               {colaboradores.map((c) => (
@@ -306,99 +338,152 @@ export default function ScaleEditor({
             </div>
           </div>
 
-          {/* Tabela de escala */}
-          <div className="overflow-x-auto">
-            <div className="min-w-[900px] p-4">
-              {/* Header dos dias */}
-              <div className="grid grid-cols-[160px_repeat(7,1fr)] gap-px bg-[#e8e2d4] rounded-t-lg overflow-hidden">
-                <div className="bg-[#f5f3ee] px-3 py-2 text-xs font-medium text-[#8b7d6b]">
-                  Colaborador
+          {/* Grade mensal agrupada por dia */}
+          <div className="overflow-auto flex-1 min-h-0">
+            <div className="min-w-[860px] p-4">
+              <div className="grid grid-cols-7 gap-px bg-[#e8e2d4] rounded-lg overflow-hidden">
+                <div className="col-span-7 grid grid-cols-7 gap-px">
+                  {DIAS_SEMANA.map((d, i) => (
+                    <div
+                      key={d}
+                      className={`bg-[#f5f3ee] px-2 py-2 text-center text-xs font-medium uppercase tracking-wider ${
+                        i === 0 ? "text-red-400" : "text-[#8b7d6b]"
+                      }`}
+                    >
+                      {d}
+                    </div>
+                  ))}
                 </div>
-                {DIAS_SEMANA.map((d, i) => (
-                  <div
-                    key={d}
-                    className={`bg-[#f5f3ee] px-2 py-2 text-center text-xs font-medium uppercase tracking-wider ${
-                      i === 0 ? "text-red-400" : "text-[#8b7d6b]"
-                    }`}
-                  >
-                    {d}
-                  </div>
-                ))}
-              </div>
 
-              {/* Semanas */}
-              {Array.from({ length: Math.ceil(celulas.length / 7) }, (_, semana) => {
-                const start = semana * 7;
-                const semanaDias = celulas.slice(start, start + 7);
+                {celulas.map((dia, i) => {
+                if (dia === null) {
+                  return <div key={`empty-${i}`} className="bg-[#f5f3ee]" style={{ minHeight: alturaLinha }} />;
+                }
+
+                const diaDaAbreviado = diaDaAbreviadoFn(dia, mes, ano);
+                const fimDeAbreviado = diaDaAbreviadoFn(dia, mes, ano);
+                const isWeekendDay = fimDeAbreviado === 0 || fimDeAbreviado === 6;
+                const plantoesDoDia = Object.entries(plantoes[dia] ?? {})
+                  .map(([colabId, horario]) => ({
+                    colab: colaboradores.find((item) => item.id === colabId),
+                    horario,
+                  }))
+                  .filter((item): item is { colab: Colaborador; horario: string } => Boolean(item.colab));
+                const disponiveis = colaboradores.filter((colab) => !plantoes[dia]?.[colab.id]);
+
                 return (
-                  <div key={semana} className="border-b border-[#e8e2d4]/40">
-                    {colaboradores.map((colab) => (
-                      <div
-                        key={`${semana}-${colab.id}`}
-                        className="grid grid-cols-[160px_repeat(7,1fr)] gap-px bg-[#e8e2d4]/40"
-                      >
-                        {/* Nome do colaborador */}
-                        <div className="bg-white px-3 py-2 text-sm flex items-center gap-2">
-                          <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ backgroundColor: colab.cor }}
-                          />
-                          <span className="truncate text-[#333] font-medium">{colab.nome}</span>
-                        </div>
+                  <div
+                    key={dia}
+                    className={`p-2 flex flex-col gap-1.5 ${
+                      isWeekendDay ? "bg-[#faf8f4]" : "bg-white"
+                    }`}
+                    style={{ minHeight: alturaLinha }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm font-semibold ${diaDaAbreviado === 0 ? "text-red-400" : "text-[#555]"}`}>
+                        {dia}
+                      </span>
+                      <span className="text-[10px] text-[#b0a697]">
+                        {plantoesDoDia.length > 0 ? `${plantoesDoDia.length} escalado${plantoesDoDia.length > 1 ? "s" : ""}` : "Livre"}
+                      </span>
+                    </div>
 
-                        {/* Dias da semana */}
-                        {semanaDias.map((dia, iDia) => {
-                          if (dia === null) {
-                            return (
-                              <div
-                                key={`empty-${iDia}`}
-                                className="bg-[#f5f3ee] min-h-[38px]"
+                    <div className="flex flex-col gap-1">
+                      {plantoesDoDia.map(({ colab, horario }) => (
+                        <button
+                          type="button"
+                          key={`${dia}-${colab.id}`}
+                          onClick={() => toggleCell(dia, colab.id, colab.regime)}
+                          aria-label={`${colab.nome}, dia ${dia}, ${horario}. Clique para remover`}
+                          className="w-full rounded-md px-1.5 py-1 text-left text-[10px] leading-tight transition-colors hover:bg-red-50"
+                          style={{
+                            backgroundColor: `${colab.cor}20`,
+                            color: colab.cor,
+                          }}
+                          title={`${colab.nome} - ${horario}. Clique para remover`}
+                        >
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: colab.cor }} />
+                            <span className="truncate font-medium">{colab.nome}</span>
+                          </span>
+                          <span className="block pl-2.5 opacity-80">{horario}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {disponiveis.length > 0 && (
+                      <div className="relative mt-auto">
+                        <button
+                          type="button"
+                          aria-label={`Adicionar colaborador ao dia ${dia}`}
+                          onClick={() => {
+                            setMenuDia((ativo) => (ativo === dia ? null : dia));
+                            setBuscaColab("");
+                          }}
+                          className="w-full flex items-center justify-center gap-1 rounded border border-dashed border-[#d4cdc0] px-1 py-1 text-[10px] text-[#8b7d6b] outline-none hover:border-[#1a3c34] hover:text-[#1a3c34]"
+                        >
+                          <ChevronDown size={12} strokeWidth={2} />
+                          Adicionar
+                        </button>
+                        {menuDia === dia && (
+                          <div
+                            ref={menuRef}
+                            className="absolute bottom-full left-0 z-20 mb-1 w-64 rounded-lg border border-[#e8e2d4] bg-white shadow-xl"
+                          >
+                            <div className="flex items-center gap-1 border-b border-[#e8e2d4] px-2 py-1.5">
+                              <Search size={13} strokeWidth={2} className="text-[#8b7d6b]" />
+                              <input
+                                autoFocus
+                                value={buscaColab}
+                                onChange={(e) => setBuscaColab(e.target.value)}
+                                placeholder="Buscar colaborador"
+                                className="w-full bg-transparent text-xs text-[#333] outline-none placeholder:text-[#b0a697]"
                               />
-                            );
-                          }
-
-                          const turno = plantoes[dia]?.[colab.id];
-                          const isFimDeSemana = getDiaSemana(dia, mes, ano) === 0 || getDiaSemana(dia, mes, ano) === 6;
-
-                          return (
-                            <button
-                              type="button"
-                              key={`${colab.id}-${dia}`}
-                              onClick={() => toggleCell(dia, colab.id, colab.regime)}
-                              aria-pressed={Boolean(turno)}
-                              aria-label={`${colab.nome} — dia ${dia}${turno ? `, ${turno}` : ", sem plantão"}`}
-                              className={`px-1 py-1 text-[11px] leading-tight min-h-[38px] cursor-pointer transition-colors hover:bg-[#f0ede5] ${
-                                isFimDeSemana ? "bg-[#faf8f4]" : "bg-white"
-                              }`}
-                              title={`${colab.nome} - Dia ${dia}`}
-                            >
-                              <span className="text-[9px] text-[#8b7d6b] font-medium">
-                                {dia}
-                              </span>
-                              {turno && (
-                                <div
-                                  className="mt-0.5 text-[9px] px-1 py-0.5 rounded text-center truncate font-medium"
-                                  style={{
-                                    backgroundColor: `${colab.cor}20`,
-                                    color: colab.cor,
-                                  }}
-                                >
-                                  {turno}
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
+                            </div>
+                            <ul className="max-h-60 overflow-y-auto py-1">
+                              {disponiveis
+                                .filter((c) => c.nome.toLowerCase().includes(buscaColab.toLowerCase()))
+                                .map((colab) => {
+                                  const horarioPrevisto = normalizarRegime(colab.regime)
+                                    ? horarioPeloRegime(normalizarRegime(colab.regime)!)
+                                    : null;
+                                  return (
+                                    <li key={colab.id}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          toggleCell(dia, colab.id, colab.regime);
+                                          setMenuDia(null);
+                                          setBuscaColab("");
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[#f5f3ee]"
+                                      >
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colab.cor }} />
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block truncate text-xs font-medium text-[#333]">{colab.nome}</span>
+                                          <span className="block truncate text-[10px] text-[#8b7d6b]">
+                                            {colab.cargo} • {colab.regime}
+                                            {horarioPrevisto ? ` • ${horarioPrevisto.inicio}-${horarioPrevisto.fim}` : ""}
+                                          </span>
+                                        </span>
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                    ))}
+                    )}
                   </div>
                 );
-              })}
+                })}
+              </div>
             </div>
           </div>
 
           {/* Ações finais */}
-          <div className="px-6 py-4 border-t border-[#e8e2d4] bg-[#faf8f4] flex items-center justify-between">
+          <div className="px-6 py-4 border-t border-[#e8e2d4] bg-[#faf8f4] flex items-center justify-between shrink-0">
             <div className="flex items-center gap-4 text-xs text-[#8b7d6b]">
               <div className="flex items-center gap-1.5">
                 <span>Status:</span>
