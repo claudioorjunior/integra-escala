@@ -6,6 +6,7 @@ import { getLocalUser, signOut } from "@/lib/auth";
 import { getDB, buscarEscalaDoMes } from "@/lib/db";
 import MonthCard from "@/components/calendar/MonthCard";
 import ScaleEditor from "@/components/calendar/ScaleEditor";
+import AppShell from "@/components/layout/AppShell";
 import { Plus, Printer, Sparkles } from "lucide-react";
 
 function getProximosMeses(qtd: number) {
@@ -144,8 +145,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <>
-      {/* Cabeçalho da página */}
+    <AppShell>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-medium text-[#1a3c34]">Escalas</h1>
@@ -207,6 +207,6 @@ export default function DashboardPage() {
           onSalvo={carregarDados}
         />
       )}
-    </>
+      </AppShell>
   );
 }

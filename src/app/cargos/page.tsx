@@ -7,6 +7,7 @@ import { getDB, criarCargo, atualizarCargo, excluirCargo } from "@/lib/db";
 import { Briefcase, Plus } from "lucide-react";
 import { ptBR } from "@/lib/i18n/pt-BR";
 import CargoModal from "@/components/cargos/CargoModal";
+import AppShell from "@/components/layout/AppShell";
 
 interface Cargo {
   id: string;
@@ -103,7 +104,7 @@ export default function CargosPage() {
   }
 
   return (
-    <>
+    <AppShell>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-medium text-[#1a3c34]">Cargos</h1>
@@ -166,6 +167,6 @@ export default function CargosPage() {
         onSalvar={handleSalvar}
         onExcluir={cargoEditando ? handleExcluir : undefined}
       />
-    </>
+      </AppShell>
   );
 }

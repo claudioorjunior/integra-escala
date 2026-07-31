@@ -15,6 +15,7 @@ import ColaboradorModal, {
   type ColaboradorForm,
 } from "@/components/colaboradores/ColaboradorModal";
 import { ptBR } from "@/lib/i18n/pt-BR";
+import AppShell from "@/components/layout/AppShell";
 
 interface Colaborador {
   id: string;
@@ -161,8 +162,7 @@ export default function ColaboradoresPage() {
   }
 
   return (
-    <>
-      {/* Cabeçalho */}
+    <AppShell>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-medium text-[#1a3c34]">Colaboradores</h1>
@@ -282,6 +282,6 @@ export default function ColaboradoresPage() {
         onSalvar={handleSalvar}
         onExcluir={colaboradorEditando ? handleExcluir : undefined}
       />
-    </>
+      </AppShell>
   );
 }

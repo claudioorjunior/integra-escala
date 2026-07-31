@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getLocalUser, signOut } from "@/lib/auth";
 import { getDB } from "@/lib/db";
 import { Settings, Home, User, Database } from "lucide-react";
+import AppShell from "@/components/layout/AppShell";
 
 export default function ConfigPage() {
   const router = useRouter();
@@ -60,10 +61,10 @@ export default function ConfigPage() {
   }
 
   return (
-    <>
-      <div className="mb-6">
-        <h1 className="text-xl font-medium text-[#1a3c34]">Configurações</h1>
-        <p className="text-sm text-[#8b7d6b] mt-0.5">
+    <AppShell>
+        <div className="mb-6">
+          <h1 className="text-xl font-medium text-[#1a3c34]">Configurações</h1>
+          <p className="text-sm text-[#8b7d6b] mt-0.5">
           Visualize as configurações da sua conta e da instituição
         </p>
       </div>
@@ -113,6 +114,6 @@ export default function ConfigPage() {
           </p>
         </div>
       </div>
-    </>
+      </AppShell>
   );
 }

@@ -21,11 +21,7 @@ const NAV_ITEMS = [
   { href: "/config", label: "Configurações", icon: Settings },
 ];
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -43,7 +39,6 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-[#f5f3ee] flex flex-col">
-      {/* Top menu */}
       <header className="bg-white border-b border-[#e8e2d4] sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
@@ -87,7 +82,6 @@ export default function DashboardLayout({
                 <LogOut size={14} strokeWidth={2} />
                 Sair
               </button>
-              {/* Mobile menu toggle */}
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 className="md:hidden p-2 text-[#555] hover:text-[#1a3c34]"
@@ -133,11 +127,8 @@ export default function DashboardLayout({
         )}
       </header>
 
-      {/* Main content */}
       <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-          {children}
-        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">{children}</div>
       </main>
     </div>
   );
