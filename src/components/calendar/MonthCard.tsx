@@ -66,6 +66,13 @@ export default function MonthCard({
     return nomes.size;
   }, [dias]);
 
+  // Legenda: nome + cor de cada colaborador escalado neste mês
+  const legenda = useMemo(() => {
+    const map = new Map<string, Plantao>();
+    (dias ?? []).forEach((d) => d.plantoes.forEach((p) => map.set(p.nome, p)));
+    return [...map.values()];
+  }, [dias]);
+
   // Gera as células do calendário
   const celulas = useMemo(() => {
     const cells: (number | null)[] = [];
@@ -76,7 +83,7 @@ export default function MonthCard({
 
   return (
     <div
-      className={`bg-white rounded-xl border border-[#e8e2d4] overflow-hidden transition-shadow hover:shadow-sm ${
+      className={`bg-white rounded-xl border border-[#e8e2d4] overflow-hidden transition-shadow hover:shadow-sm print:shadow-none print:border-black/20 print:break-inside-avoid ${
         compacto ? "" : ""
       }`}
     >
@@ -90,7 +97,7 @@ export default function MonthCard({
             {colaboradoresNoMes} colaboradores escalados
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 print:hidden">
           {onGerar && (
             <button
               onClick={onGerar}
@@ -123,6 +130,20 @@ export default function MonthCard({
           <span>•</span>
           <span>{totalDias} dias</span>
         </div>
+        {/* Legenda de cores por colaborador */}
+        {legenda.length > 0 && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-[#555]">
+            {legenda.map((p) => (
+              <span key={p.nome} className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: p.cor }}
+                />
+                {p.nome}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Grid de dias */}

@@ -21,7 +21,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/schemas/__tests__/escala.test.ts",
+    "test": "tsx --test \"src/**/__tests__/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
