@@ -146,3 +146,20 @@
     letter-spacing: -0.03em;
   }
 }
+
+/* Print: A4 portrait, clean background, no page background gradients */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body {
+    background: white !important;
+    background-image: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+}

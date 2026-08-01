@@ -88,7 +88,7 @@ export default function Modal({
   return (
     <div
       ref={overlayRef}
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm ${overlayClassName ?? ""}`}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm print:bg-white print:backdrop-blur-none print:p-0 print:static print:block ${overlayClassName ?? ""}`}
       onClick={(e) => {
         if (e.target === overlayRef.current) onFechar();
       }}
@@ -106,7 +106,7 @@ export default function Modal({
           <button
             onClick={onFechar}
             aria-label="Fechar"
-            className="absolute top-3 right-3 text-[#8b7d6b] hover:text-[#555] p-1"
+            className="absolute top-3 right-3 text-[#8b7d6b] hover:text-[#555] p-1 print:hidden"
           >
             <X size={18} strokeWidth={2} />
           </button>

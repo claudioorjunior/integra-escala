@@ -258,7 +258,7 @@ export default function ScaleEditor({
       dialogClassName="mx-4 my-6"
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8e2d4]">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#e8e2d4] print:hidden">
         <div>
           <h2 className="text-lg font-medium text-[#1a3c34]">
             {MESES[mes - 1]} {ano}
@@ -307,10 +307,10 @@ export default function ScaleEditor({
           </div>
 
           {/* Tabela de escala */}
-          <div className="overflow-x-auto">
-            <div className="min-w-[900px] p-4">
+          <div className="overflow-x-auto print:overflow-visible">
+            <div className="min-w-[900px] p-4 print:min-w-0 print:p-2">
               {/* Header dos dias */}
-              <div className="grid grid-cols-[160px_repeat(7,1fr)] gap-px bg-[#e8e2d4] rounded-t-lg overflow-hidden">
+              <div className="grid grid-cols-[160px_repeat(7,1fr)] gap-px bg-[#e8e2d4] rounded-t-lg overflow-hidden print:grid-cols-[110px_repeat(7,1fr)]">
                 <div className="bg-[#f5f3ee] px-3 py-2 text-xs font-medium text-[#8b7d6b]">
                   Colaborador
                 </div>
@@ -335,7 +335,7 @@ export default function ScaleEditor({
                     {colaboradores.map((colab) => (
                       <div
                         key={`${semana}-${colab.id}`}
-                        className="grid grid-cols-[160px_repeat(7,1fr)] gap-px bg-[#e8e2d4]/40"
+                        className="grid grid-cols-[160px_repeat(7,1fr)] gap-px bg-[#e8e2d4]/40 print:grid-cols-[110px_repeat(7,1fr)]"
                       >
                         {/* Nome do colaborador */}
                         <div className="bg-white px-3 py-2 text-sm flex items-center gap-2">
@@ -398,7 +398,7 @@ export default function ScaleEditor({
           </div>
 
           {/* Ações finais */}
-          <div className="px-6 py-4 border-t border-[#e8e2d4] bg-[#faf8f4] flex items-center justify-between">
+          <div className="px-6 py-4 border-t border-[#e8e2d4] bg-[#faf8f4] flex items-center justify-between print:hidden">
             <div className="flex items-center gap-4 text-xs text-[#8b7d6b]">
               <div className="flex items-center gap-1.5">
                 <span>Status:</span>
